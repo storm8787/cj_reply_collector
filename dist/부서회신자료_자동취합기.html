@@ -21,7 +21,11 @@
   --bad: #b42318;
   --warn-bg: #fff7e6;
   --bad-bg: #fdecea;
+  /* 넓은 화면에서도 내용이 가운데에 오도록 하고, 표는 이 폭 안에서 스크롤한다 */
+  --page-width: 1600px;
 }
+
+html, body { width: 100%; }
 
 * { box-sizing: border-box; }
 
@@ -36,7 +40,14 @@ body {
 header.app-header {
   background: #123a63;
   color: #fff;
-  padding: 14px 20px 10px;
+  padding: 14px 0 10px;
+}
+header.app-header > * {
+  max-width: var(--page-width);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 20px;
+  padding-right: 20px;
 }
 header.app-header h1 { margin: 0; font-size: 20px; font-weight: 700; }
 header.app-header p { margin: 4px 0 0; font-size: 13px; opacity: 0.9; }
@@ -53,7 +64,11 @@ nav.tabs button {
 }
 nav.tabs button.active { background: var(--bg); color: var(--ink); font-weight: 700; }
 
-main { padding: 16px 20px 60px; max-width: 1500px; }
+main {
+  padding: 16px 20px 60px;
+  max-width: var(--page-width);
+  margin: 0 auto;
+}
 section.step {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -509,13 +524,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
  * 전체 행: 77
  * 헤더 행: 2행 / 순번 컬럼: A / 부서명 컬럼: C / 소속 컬럼: B
  * 빈 행: 0
- * 부서 수: 75
+ * 엑셀에서 읽은 부서 수: 75
+ * 추가 요청 부서: 의회사무국 (순서 76)
+ * 전체 부서 수: 76
  * 부분문자열 관계: 없음
  */
 (function (global) {
   'use strict';
   var CJ = (global.CJ = global.CJ || {});
-  CJ.DEPARTMENT_SOURCE = {"title":"충주시 행정기구 직제순서 (2026.1.1. 시행 기준)","sheet":"충주시 직제순서","count":75};
+  CJ.DEPARTMENT_SOURCE = {"title":"충주시 행정기구 직제순서 (2026.1.1. 시행 기준)","sheet":"충주시 직제순서","count":76};
   CJ.DEFAULT_DEPARTMENTS = [
     { order: 1, name: "홍보담당관", bureau: "담당관(부시장 직속)", aliases: [], enabled: true },
     { order: 2, name: "감사담당관", bureau: "담당관(부시장 직속)", aliases: [], enabled: true },
@@ -591,7 +608,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     { order: 72, name: "봉방동", bureau: "읍면동", aliases: [], enabled: true },
     { order: 73, name: "칠금금릉동", bureau: "읍면동", aliases: [], enabled: true },
     { order: 74, name: "연수동", bureau: "읍면동", aliases: [], enabled: true },
-    { order: 75, name: "목행용탄동", bureau: "읍면동", aliases: [], enabled: true }
+    { order: 75, name: "목행용탄동", bureau: "읍면동", aliases: [], enabled: true },
+    { order: 76, name: "의회사무국", bureau: "", aliases: [], enabled: true }
   ];
 })(typeof globalThis !== "undefined" ? globalThis : this);
 

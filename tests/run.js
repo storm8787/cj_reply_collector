@@ -44,11 +44,17 @@ function byName(name) {
 group('0. 충주시 부서목록');
 
 test('첨부 엑셀에서 만든 기본 부서목록이 들어있다', () => {
-  assert.equal(departments.length, 75, '부서 수');
+  assert.equal(departments.length, 76, '부서 수 (엑셀 75 + 의회사무국)');
   assert.equal(departments[0].name, '홍보담당관');
   assert.equal(departments[0].order, 1);
   assert.equal(departments[74].name, '목행용탄동');
   assert.equal(departments[74].order, 75);
+});
+
+test('의회사무국이 맨 마지막 76번으로 들어있다', () => {
+  assert.equal(departments[75].name, '의회사무국');
+  assert.equal(departments[75].order, 76);
+  assert.equal(departments[75].enabled, true);
 });
 
 test('원본 엑셀의 부서 순서와 완전히 일치한다', () => {
@@ -56,7 +62,8 @@ test('원본 엑셀의 부서 순서와 완전히 일치한다', () => {
   const wb = XLSX.read(fs.readFileSync(path.join(ROOT, 'data', '충주시_부서순서.xlsx')), { type: 'buffer' });
   const grid = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: '', raw: false });
   const fromXlsx = grid.slice(2).map((r) => String(r[2] || '').trim()).filter(Boolean);
-  assert.deepEqual(departments.map((d) => d.name), fromXlsx, '부서 순서');
+  assert.equal(fromXlsx.length, 75, '엑셀의 부서 수');
+  assert.deepEqual(departments.slice(0, 75).map((d) => d.name), fromXlsx, '엑셀 부분의 부서 순서');
 });
 
 test('팀 단위는 관리하지 않는다', () => {
@@ -67,17 +74,17 @@ test('팀 단위는 관리하지 않는다', () => {
 test('부서 추가·수정·삭제·이동이 동작한다', () => {
   const s = newStore();
   assert.ok(s.add('테스트과').ok);
-  assert.equal(s.departments.length, 76);
-  assert.equal(s.departments[75].name, '테스트과');
+  assert.equal(s.departments.length, 77);
+  assert.equal(s.departments[76].name, '테스트과');
   assert.ok(!s.add('테스트과').ok, '중복 부서명은 거부');
-  assert.ok(s.rename(75, '테스트담당관').ok);
-  assert.equal(s.departments[75].name, '테스트담당관');
-  s.move(75, 0);
+  assert.ok(s.rename(76, '테스트담당관').ok);
+  assert.equal(s.departments[76].name, '테스트담당관');
+  s.move(76, 0);
   assert.equal(s.departments[0].name, '테스트담당관');
   assert.equal(s.departments[0].order, 1);
   assert.equal(s.departments[1].name, '홍보담당관');
   s.remove(0);
-  assert.equal(s.departments.length, 75);
+  assert.equal(s.departments.length, 76);
   assert.equal(s.departments[0].name, '홍보담당관');
 });
 
@@ -89,7 +96,7 @@ test('부서설정 JSON 내보내기·가져오기', () => {
   const s2 = newStore();
   const res = s2.fromJSON(json);
   assert.ok(res.ok, '가져오기 성공');
-  assert.equal(res.count, 75);
+  assert.equal(res.count, 76);
   assert.deepEqual(s2.departments[5].aliases, ['정보과', '전산과']);
   assert.equal(s2.departments[6].enabled, false);
   assert.ok(!s2.fromJSON('이건 JSON 이 아닙니다').ok, '잘못된 파일은 거부');
@@ -455,7 +462,7 @@ test('24) 미회신 부서를 정확히 계산한다', async () => {
     if (f.include && d && expected.indexOf(d) < 0) expected.push(d);
   });
   assert.deepEqual(replied, expected.sort());
-  assert.equal(status.repliedCount + status.notRepliedCount, 75, '사용 중인 부서 전체');
+  assert.equal(status.repliedCount + status.notRepliedCount, 76, '사용 중인 부서 전체');
   assert.ok(status.rows.filter((r) => r.name === '기획예산과')[0].replied === false, '미회신 부서 확인');
   assert.ok(result.rows.length > 0);
 });
@@ -531,7 +538,7 @@ test('27) 결과 XLSX 를 만들고 다시 읽을 수 있다', async () => {
   assert.equal(merged.length - 1, result.rows.length);
   const st = XLSX.utils.sheet_to_json(back.Sheets['회신현황'], { header: 1, defval: '', raw: false });
   assert.deepEqual(st[0], ['순서', '부서명', '사용여부', '회신여부', '파일수', '취합건수']);
-  assert.ok(st.length >= 76, '미회신 부서 포함');
+  assert.ok(st.length >= 77, '미회신 부서 포함');
   const fr = XLSX.utils.sheet_to_json(back.Sheets['파일별처리결과'], { header: 1, defval: '', raw: false });
   assert.deepEqual(fr[0], ['파일명', '판별부서', '판별방법', '사용여부', '선택 데이터표', '취합건수', '상태']);
   assert.equal(fr.length - 1, RESULTS.length);
