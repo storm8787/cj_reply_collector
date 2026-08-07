@@ -16,6 +16,13 @@ const ASSETS = [
   { from: 'node_modules/xlsx/LICENSE', to: 'xlsx.LICENSE.txt' },
   { from: 'node_modules/jszip/dist/jszip.min.js', to: 'jszip.min.js' },
   { from: 'node_modules/jszip/LICENSE.markdown', to: 'jszip.LICENSE.txt' },
+  // PDF 읽기(본문 텍스트 추출). 워커 파일도 함께 넣어 메인 스레드에서 동작시킨다.
+  { from: 'node_modules/pdfjs-dist/legacy/build/pdf.min.js', to: 'pdf.min.js' },
+  { from: 'node_modules/pdfjs-dist/legacy/build/pdf.worker.min.js', to: 'pdf.worker.min.js' },
+  { from: 'node_modules/pdfjs-dist/LICENSE', to: 'pdfjs.LICENSE.txt' },
+  // PDF 합치기
+  { from: 'node_modules/pdf-lib/dist/pdf-lib.min.js', to: 'pdf-lib.min.js' },
+  { from: 'node_modules/pdf-lib/LICENSE.md', to: 'pdf-lib.LICENSE.txt' },
 ];
 
 if (!fs.existsSync(VENDOR)) fs.mkdirSync(VENDOR, { recursive: true });

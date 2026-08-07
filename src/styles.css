@@ -13,7 +13,11 @@
   --bad: #b42318;
   --warn-bg: #fff7e6;
   --bad-bg: #fdecea;
+  /* 넓은 화면에서도 내용이 가운데에 오도록 하고, 표는 이 폭 안에서 스크롤한다 */
+  --page-width: 1600px;
 }
+
+html, body { width: 100%; }
 
 * { box-sizing: border-box; }
 
@@ -28,7 +32,14 @@ body {
 header.app-header {
   background: #123a63;
   color: #fff;
-  padding: 14px 20px 10px;
+  padding: 14px 0 10px;
+}
+header.app-header > * {
+  max-width: var(--page-width);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 20px;
+  padding-right: 20px;
 }
 header.app-header h1 { margin: 0; font-size: 20px; font-weight: 700; }
 header.app-header p { margin: 4px 0 0; font-size: 13px; opacity: 0.9; }
@@ -45,7 +56,11 @@ nav.tabs button {
 }
 nav.tabs button.active { background: var(--bg); color: var(--ink); font-weight: 700; }
 
-main { padding: 16px 20px 60px; max-width: 1500px; }
+main {
+  padding: 16px 20px 60px;
+  max-width: var(--page-width);
+  margin: 0 auto;
+}
 section.step {
   background: var(--panel);
   border: 1px solid var(--line);

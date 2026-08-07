@@ -8,13 +8,15 @@
  * 전체 행: 77
  * 헤더 행: 2행 / 순번 컬럼: A / 부서명 컬럼: C / 소속 컬럼: B
  * 빈 행: 0
- * 부서 수: 75
+ * 엑셀에서 읽은 부서 수: 75
+ * 추가 요청 부서: 의회사무국 (순서 76)
+ * 전체 부서 수: 76
  * 부분문자열 관계: 없음
  */
 (function (global) {
   'use strict';
   var CJ = (global.CJ = global.CJ || {});
-  CJ.DEPARTMENT_SOURCE = {"title":"충주시 행정기구 직제순서 (2026.1.1. 시행 기준)","sheet":"충주시 직제순서","count":75};
+  CJ.DEPARTMENT_SOURCE = {"title":"충주시 행정기구 직제순서 (2026.1.1. 시행 기준)","sheet":"충주시 직제순서","count":76};
   CJ.DEFAULT_DEPARTMENTS = [
     { order: 1, name: "홍보담당관", bureau: "담당관(부시장 직속)", aliases: [], enabled: true },
     { order: 2, name: "감사담당관", bureau: "담당관(부시장 직속)", aliases: [], enabled: true },
@@ -90,6 +92,7 @@
     { order: 72, name: "봉방동", bureau: "읍면동", aliases: [], enabled: true },
     { order: 73, name: "칠금금릉동", bureau: "읍면동", aliases: [], enabled: true },
     { order: 74, name: "연수동", bureau: "읍면동", aliases: [], enabled: true },
-    { order: 75, name: "목행용탄동", bureau: "읍면동", aliases: [], enabled: true }
+    { order: 75, name: "목행용탄동", bureau: "읍면동", aliases: [], enabled: true },
+    { order: 76, name: "의회사무국", bureau: "", aliases: [], enabled: true }
   ];
 })(typeof globalThis !== "undefined" ? globalThis : this);

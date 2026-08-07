@@ -59,13 +59,14 @@
       if (f.support && f.support !== 'supported' && f.support !== 'partial') {
         statusLabel = CJ.analyzer.SUPPORT_LABEL[f.support] || statusLabel;
       }
+      var tableLabel = table ? table.label : f.documentOnly ? '원본 문서 전체' : '-';
       aoa.push([
         f.fileName,
         dept || CJ.aggregate.UNKNOWN_DEPT,
         CJ.analyzer.finalMethod(f),
         f.include ? '취합' : '제외',
-        table ? table.label : '-',
-        (countByFile && countByFile[f.id]) || 0,
+        tableLabel,
+        f.documentOnly ? (f.pageCount || 0) + '쪽' : (countByFile && countByFile[f.id]) || 0,
         statusLabel.replace(/^[^\s]+\s/, ''),
       ]);
     });
@@ -88,6 +89,27 @@
     return aoa;
   }
 
+  /**
+   * 취합순서 시트.
+   * 한글·PDF 취합본은 한 파일로 합쳐지므로, 어느 부분이 어느 부서인지 여기서 알려준다.
+   */
+  function orderRows(pdfPageMap, hwpOrder) {
+    var aoa = [['취합본', '순서', '부서명', '원본파일명', '위치']];
+    (hwpOrder || []).forEach(function (h) {
+      aoa.push(['한글취합본', h.no, h.department, h.fileName, h.no + '번째 문서']);
+    });
+    (pdfPageMap || []).forEach(function (p, i) {
+      aoa.push([
+        'PDF취합본',
+        i + 1,
+        p.department,
+        p.fileName,
+        p.failed ? '합치지 못함' : p.from + '~' + p.to + '쪽 (' + p.count + '쪽)',
+      ]);
+    });
+    return aoa;
+  }
+
   function buildWorkbook(ctx) {
     var XLSXRef = lib();
     if (!XLSXRef) throw new Error('엑셀 생성 기능을 사용할 수 없습니다.');
@@ -98,6 +120,8 @@
     addSheet(XLSXRef, wb, '회신현황', statusRows(ctx.status));
     addSheet(XLSXRef, wb, '파일별처리결과', fileRows(ctx.files, ctx.result.countByFile));
     addSheet(XLSXRef, wb, '오류및경고', issueRows(ctx.files, ctx.result.warnings));
+    var hasOrder = (ctx.hwpOrder && ctx.hwpOrder.length) || (ctx.pdfPageMap && ctx.pdfPageMap.length);
+    if (hasOrder) addSheet(XLSXRef, wb, '취합순서', orderRows(ctx.pdfPageMap, ctx.hwpOrder));
     return wb;
   }
 
@@ -127,6 +151,7 @@
 
   CJ.writer = {
     buildWorkbook: buildWorkbook,
+    orderRows: orderRows,
     defaultFileName: defaultFileName,
     statusRows: statusRows,
     fileRows: fileRows,

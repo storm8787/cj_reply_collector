@@ -41,18 +41,23 @@ function build() {
     return '<script>\n' + safeForScript(readAsset(src)) + '\n</script>\n';
   });
 
-  // 검증: 남아있는 외부 참조가 없어야 한다
+  // 검증: HTML 안에 남아있는 외부 참조가 없어야 한다.
+  // (스크립트·스타일 안의 문자열은 코드 내용이므로 검사 대상에서 뺀다)
+  const markupOnly = html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '<script></script>')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '<style></style>');
+
   const leftovers = [];
   const reSrc = /(?:src|href)\s*=\s*["']([^"']+)["']/gi;
   let m;
-  while ((m = reSrc.exec(html))) {
+  while ((m = reSrc.exec(markupOnly))) {
     const v = m[1];
     if (v.startsWith('#') || v.startsWith('data:')) continue;
     leftovers.push(v);
   }
   if (leftovers.length) throw new Error('인라인되지 않은 외부 참조가 있습니다: ' + leftovers.join(', '));
 
-  const cdnHits = (html.match(/<(script|link)[^>]*(https?:)/gi) || []).filter(Boolean);
+  const cdnHits = (markupOnly.match(/<(script|link)[^>]*(https?:)/gi) || []).filter(Boolean);
   if (cdnHits.length) throw new Error('CDN 참조가 남아 있습니다: ' + cdnHits.join(', '));
 
   if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });

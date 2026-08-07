@@ -24,6 +24,12 @@ function norm(v) {
     .trim();
 }
 
+/*
+ * 첨부 엑셀에는 없지만 사용자가 추가로 요청한 부서.
+ * 엑셀에서 읽은 부서 뒤에 순서대로 덧붙인다.
+ */
+const EXTRA_DEPARTMENTS = [{ name: '의회사무국', bureau: '' }];
+
 const ORDER_LABELS = ['순번', '연번', '순서', '번호', 'no', 'no.'];
 const NAME_LABELS = ['부서명', '부서', '과명', '실과명', '기관명', '부서명(과)'];
 const BUREAU_LABELS = ['소속', '국', '실', '소속(국/실)', '국실', '실국'];
@@ -103,7 +109,22 @@ function main() {
     });
   }
   report.push(`빈 행: ${blankRows}`);
-  report.push(`부서 수: ${departments.length}`);
+  report.push(`엑셀에서 읽은 부서 수: ${departments.length}`);
+
+  EXTRA_DEPARTMENTS.forEach((extra) => {
+    const name = norm(extra.name);
+    if (!name || seen.has(name)) return;
+    seen.add(name);
+    departments.push({
+      order: departments.length + 1,
+      name,
+      bureau: norm(extra.bureau || ''),
+      aliases: [],
+      enabled: true,
+    });
+    report.push(`추가 요청 부서: ${name} (순서 ${departments.length})`);
+  });
+  report.push(`전체 부서 수: ${departments.length}`);
 
   // 부서명이 다른 부서명의 부분문자열인 경우(판별 시 주의 대상) 점검
   const contained = [];
