@@ -9,7 +9,6 @@
 
   var EXCEL_EXT = { xlsx: 1, xlsm: 1, xls: 1, xlsb: 0, csv: 1 };
   var KNOWN_UNSUPPORTED = {
-    pdf: 'PDF 파일은 취합할 수 없습니다.',
     docx: '워드 파일은 취합할 수 없습니다.',
     doc: '워드 파일은 취합할 수 없습니다.',
     pptx: '파워포인트 파일은 취합할 수 없습니다.',
@@ -33,6 +32,7 @@
     if (EXCEL_EXT[ext]) return 'excel';
     if (ext === 'hwpx') return 'hwpx';
     if (ext === 'hwp') return 'hwp';
+    if (ext === 'pdf') return 'pdf';
     return 'unknown';
   }
 
@@ -46,6 +46,7 @@
     if (kind === 'excel') return CJ.excel.read(data, fileName);
     if (kind === 'hwpx') return CJ.hwpx.read(data, fileName);
     if (kind === 'hwp') return CJ.hwp.read(data, fileName);
+    if (kind === 'pdf') return CJ.pdf.read(data, fileName);
     if (KNOWN_UNSUPPORTED[ext]) return Promise.resolve(emptyDoc('unsupported', KNOWN_UNSUPPORTED[ext]));
     return Promise.resolve(
       emptyDoc('unsupported', '지원하지 않는 파일 형식입니다. (엑셀, CSV, 한글 파일만 취합할 수 있습니다.)')
@@ -106,8 +107,14 @@
           });
         }
 
-        base.tables = CJ.tableDetector.detectTables(doc, ctx.options);
-        if (!base.tables.length) {
+        // PDF 는 표를 신뢰할 수 있게 복원할 수 없으므로 원본 문서 자체를 취합한다
+        base.documentOnly = !!doc.documentOnly;
+        base.pageCount = doc.pageCount || 0;
+
+        base.tables = base.documentOnly ? [] : CJ.tableDetector.detectTables(doc, ctx.options);
+        if (base.documentOnly) {
+          base.tableNote = '원본 ' + (base.pageCount || 0) + '쪽을 그대로 취합본에 넣습니다.';
+        } else if (!base.tables.length) {
           base.errors.push({ type: '자료', message: '이 파일에서 취합할 표를 찾지 못했습니다.' });
         } else {
           base.selectedTableId = base.tables[0].id;

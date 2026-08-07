@@ -164,6 +164,84 @@ function hwpFile(paragraphs, tables, opts) {
   return Uint8Array.from(out);
 }
 
+
+/* -------------------------------- PDF -------------------------------- */
+/*
+ * 한글이 들어있는 최소 PDF 를 직접 만든다.
+ * 실제 글꼴을 넣지 않고 ToUnicode CMap 으로만 매핑하므로 화면에 그려지지는 않지만,
+ * PDF 본문 텍스트 추출(부서 판별) 경로를 그대로 검증할 수 있다.
+ */
+function pdfFile(lines, pageCount) {
+  const pages = Math.max(1, pageCount || 1);
+  const text = lines.join('\n');
+  const chars = [...text.replace(/\n/g, '')];
+  const bf = chars
+    .map((c, i) => '<' + (i + 1).toString(16).padStart(4, '0') + '> <' + c.codePointAt(0).toString(16).padStart(4, '0') + '>')
+    .join(' ');
+  const cmap =
+    '/CIDInit /ProcSet findresource begin 12 dict begin begincmap /CMapName /A def /CMapType 2 def ' +
+    '1 begincodespacerange <0000><FFFF> endcodespacerange ' +
+    chars.length + ' beginbfchar ' + bf + ' endbfchar endcmap CMapName currentdict /CMap defineresource pop end end';
+
+  let cursor = 0;
+  const contents = lines.map((line) => {
+    const hex = [...line].map(() => (++cursor).toString(16).padStart(4, '0')).join('');
+    return hex;
+  });
+
+  const objs = [];
+  const pageObjIds = [];
+  let nextId = 100;
+  const pageContents = [];
+  for (let p = 0; p < pages; p++) {
+    const body =
+      'BT /F1 14 Tf ' +
+      contents.map((hex, i) => '1 0 0 1 50 ' + (760 - i * 24) + ' Tm <' + hex + '> Tj ').join('') +
+      'ET';
+    pageContents.push(body);
+  }
+
+  objs[1] = '<< /Type /Catalog /Pages 2 0 R >>';
+  let kids = [];
+  for (let p = 0; p < pages; p++) {
+    const pageId = 10 + p * 2;
+    const contentId = pageId + 1;
+    pageObjIds.push(pageId);
+    kids.push(pageId + ' 0 R');
+    objs[pageId] =
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 5 0 R >> >> /Contents ' +
+      contentId + ' 0 R >>';
+    objs[contentId] =
+      '<< /Length ' + pageContents[p].length + ' >>\nstream\n' + pageContents[p] + '\nendstream';
+  }
+  objs[2] = '<< /Type /Pages /Kids [' + kids.join(' ') + '] /Count ' + pages + ' >>';
+  objs[5] =
+    '<< /Type /Font /Subtype /Type0 /BaseFont /Dummy /Encoding /Identity-H /DescendantFonts [6 0 R] /ToUnicode 7 0 R >>';
+  objs[6] =
+    '<< /Type /Font /Subtype /CIDFontType2 /BaseFont /Dummy /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor 8 0 R /DW 1000 >>';
+  objs[7] = '<< /Length ' + cmap.length + ' >>\nstream\n' + cmap + '\nendstream';
+  objs[8] =
+    '<< /Type /FontDescriptor /FontName /Dummy /Flags 4 /FontBBox [0 0 1000 1000] /ItalicAngle 0 /Ascent 800 /Descent -200 /CapHeight 700 /StemV 80 >>';
+
+  const maxId = objs.length;
+  let out = '%PDF-1.4\n';
+  const off = [];
+  for (let i = 1; i < maxId; i++) {
+    if (!objs[i]) continue;
+    off[i] = out.length;
+    out += i + ' 0 obj\n' + objs[i] + '\nendobj\n';
+  }
+  const xrefPos = out.length;
+  out += 'xref\n0 ' + maxId + '\n0000000000 65535 f \n';
+  for (let i = 1; i < maxId; i++) {
+    out += objs[i]
+      ? String(off[i]).padStart(10, '0') + ' 00000 n \n'
+      : '0000000000 65535 f \n';
+  }
+  out += 'trailer\n<< /Size ' + maxId + ' /Root 1 0 R >>\nstartxref\n' + xrefPos + '\n%%EOF';
+  return new Uint8Array(Buffer.from(out, 'latin1'));
+}
+
 /* --------------------------- 샘플 파일 세트 --------------------------- */
 async function buildSamples() {
   const files = [];
@@ -330,10 +408,17 @@ async function buildSamples() {
     hwpFile(['2026년 건축물 현황 제출', '부서명 : 건축과'], [[BASE_HEADER, ...dataRows('건축', 3)]])
   );
 
+  // 16) PDF (본문에 담당부서)
+  add('회신자료_08.pdf', pdfFile(['2026년 상수도 시설 현황 제출', '담당부서 : 상수도사업소', '작성일 : 2026-08-07'], 2));
+
+  // 17) PDF (파일명으로 부서 판별)
+  add('민원봉사과_회신.pdf', pdfFile(['민원 처리 현황 제출', '항목별 건수는 붙임 참조'], 1));
+
   return files;
 }
 
 module.exports = {
+  pdfFile,
   BASE_HEADER,
   dataRows,
   xlsxFromSheets,

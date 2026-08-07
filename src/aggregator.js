@@ -83,6 +83,15 @@
         excluded.push({ file: f, reason: '사용자가 취합 대상에서 제외했습니다.' });
         return;
       }
+      if (f.documentOnly) {
+        // PDF 등 원본 문서를 그대로 취합하는 자료는 통합자료 표에 넣지 않는다
+        excluded.push({
+          file: f,
+          reason: '표가 아니라 원본 문서를 그대로 취합본에 넣습니다.',
+          documentOnly: true,
+        });
+        return;
+      }
       if (!CJ.analyzer.selectedTable(f)) {
         excluded.push({ file: f, reason: '이 파일에서 취합할 표를 찾지 못했습니다.' });
       }

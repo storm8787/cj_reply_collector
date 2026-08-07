@@ -4,6 +4,8 @@ const path = require('path');
 
 global.XLSX = require(path.resolve(__dirname, '../node_modules/xlsx'));
 global.JSZip = require(path.resolve(__dirname, '../node_modules/jszip'));
+global.pdfjsLib = require(path.resolve(__dirname, '../node_modules/pdfjs-dist/legacy/build/pdf.js'));
+global.PDFLib = require(path.resolve(__dirname, '../node_modules/pdf-lib'));
 
 [
   'text-utils',
@@ -12,6 +14,7 @@ global.JSZip = require(path.resolve(__dirname, '../node_modules/jszip'));
   'department-detector',
   'xml-lite',
   'excel-reader',
+  'pdf-reader',
   'hwpx-reader',
   'hwp-reader',
   'table-detector',
@@ -19,6 +22,8 @@ global.JSZip = require(path.resolve(__dirname, '../node_modules/jszip'));
   'analyzer',
   'aggregator',
   'excel-writer',
+  'hwpx-writer',
+  'output-builder',
 ].forEach((f) => require(path.resolve(__dirname, '../src/' + f + '.js')));
 
 module.exports = global.CJ;

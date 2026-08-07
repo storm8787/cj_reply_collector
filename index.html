@@ -26,10 +26,10 @@
       <div class="body">
         <div id="dropzone">
           <strong>여기에 회신파일을 끌어다 놓으세요</strong>
-          여러 개를 한 번에 올릴 수 있습니다. (엑셀 xlsx·xlsm·xls, CSV, 한글 hwpx·hwp)
+          여러 개를 한 번에 올릴 수 있습니다. (엑셀 xlsx·xlsm·xls, CSV, 한글 hwpx·hwp, PDF)
         </div>
         <input id="file-input" type="file" multiple class="hidden"
-               accept=".xlsx,.xlsm,.xls,.csv,.hwpx,.hwp">
+               accept=".xlsx,.xlsm,.xls,.csv,.hwpx,.hwp,.pdf">
         <div class="btn-row">
           <button id="btn-pick" type="button">파일 추가</button>
           <button id="btn-analyze" class="primary" type="button" disabled>분석 시작</button>
@@ -94,11 +94,13 @@
     <section class="step hidden" id="step-download">
       <h2><span class="step-no">단계 5</span>결과 다운로드</h2>
       <div class="body">
-        <p class="note">통합자료 · 회신현황 · 파일별처리결과 · 오류및경고 4개 시트가 들어있는 엑셀 파일이 만들어집니다.</p>
+        <p class="note">회신현황 리포트(엑셀)와, 올린 자료 종류에 맞는 온전한 취합본을 함께 만듭니다.</p>
         <div class="btn-row">
-          <button id="btn-download" class="primary" type="button">결과 다운로드</button>
-          <span id="download-name" class="note"></span>
+          <button id="btn-build" class="primary" type="button">결과 파일 만들기</button>
+          <button id="btn-download-all" type="button" class="hidden">모두 내려받기</button>
+          <span id="download-status" class="note"></span>
         </div>
+        <div id="download-list"></div>
       </div>
     </section>
   </div>
@@ -152,6 +154,14 @@
           <li>엑셀 xlsx · xlsm · xls, CSV — 지원</li>
           <li>한글 hwpx — 지원 (문단과 표를 읽습니다)</li>
           <li>한글 hwp — 일부 지원 (문단과 표만 읽으며, 배포용·암호 설정 문서는 읽지 못합니다)</li>
+          <li>PDF — 지원 (부서 판별용으로 본문 글자를 읽고, 원본 쪽을 그대로 이어붙여 취합합니다)</li>
+        </ul>
+        <div class="help-h">결과 파일</div>
+        <ul class="help">
+          <li><b>회신현황 리포트(엑셀)</b> — 회신현황·파일별처리결과·오류및경고, 그리고 표로 읽어낸 통합자료</li>
+          <li>엑셀·CSV 자료를 올렸으면 → 위 엑셀의 <code>통합자료</code> 시트가 취합본입니다</li>
+          <li>한글 자료를 올렸으면 → <b>한글취합본(hwpx)</b> 과 <b>원본 한글파일 묶음(zip)</b> 을 함께 만듭니다</li>
+          <li>PDF 자료를 올렸으면 → 원본 쪽을 부서순서대로 이어붙인 <b>PDF 취합본</b> 을 만듭니다</li>
         </ul>
         <div class="help-h">안내</div>
         <ul class="help">
@@ -168,12 +178,16 @@
 
 <script src="vendor/xlsx.full.min.js"></script>
 <script src="vendor/jszip.min.js"></script>
+<script src="vendor/pdf.min.js"></script>
+<script src="vendor/pdf.worker.min.js"></script>
+<script src="vendor/pdf-lib.min.js"></script>
 <script src="src/text-utils.js"></script>
 <script src="src/department-master.js"></script>
 <script src="src/department-store.js"></script>
 <script src="src/department-detector.js"></script>
 <script src="src/xml-lite.js"></script>
 <script src="src/excel-reader.js"></script>
+<script src="src/pdf-reader.js"></script>
 <script src="src/hwpx-reader.js"></script>
 <script src="src/hwp-reader.js"></script>
 <script src="src/table-detector.js"></script>
@@ -181,6 +195,8 @@
 <script src="src/analyzer.js"></script>
 <script src="src/aggregator.js"></script>
 <script src="src/excel-writer.js"></script>
+<script src="src/hwpx-writer.js"></script>
+<script src="src/output-builder.js"></script>
 <script src="src/app.js"></script>
 </body>
 </html>

@@ -12,6 +12,8 @@ const os = require('os');
 const path = require('path');
 const { chromium } = require('playwright');
 const XLSX = require('xlsx');
+const JSZip = require('jszip');
+const { PDFDocument } = require('pdf-lib');
 const F = require('./fixtures');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -70,9 +72,11 @@ async function main() {
   // 부서 관리 화면
   await page.click('#tab-depts');
   const deptRows = await page.locator('#dept-table tbody tr').count();
-  check(deptRows === 75, '부서 관리 화면에 충주시 부서 75개가 보인다 (실제: ' + deptRows + ')');
+  check(deptRows === 76, '부서 관리 화면에 부서 76개가 보인다 (실제: ' + deptRows + ')');
   const firstDept = await page.locator('#dept-table tbody tr').first().locator('input[data-name]').inputValue();
   check(firstDept === '홍보담당관', '첫 번째 부서가 홍보담당관이다');
+  const lastDept = await page.locator('#dept-table tbody tr').last().locator('input[data-name]').inputValue();
+  check(lastDept === '의회사무국', '마지막 76번 부서가 의회사무국이다');
 
   // 자료 취합
   await page.click('#tab-collect');
@@ -98,7 +102,7 @@ async function main() {
 
   const cards = await page.locator('#summary-cards .card').allTextContents();
   console.log('  · 요약: ' + cards.map((c) => c.replace(/\s+/g, ' ').trim()).join(' | '));
-  check(cards.length === 7, '분석 요약 카드가 나온다');
+  check(cards.length === 8, '분석 요약 카드가 나온다 (PDF 쪽수 포함)');
 
   const firstRowDept = await page.locator('#file-table tbody tr').first().locator('select[data-dept]').inputValue();
   check(firstRowDept === '정보통신과', '파일명으로 부서를 판별한다');
@@ -136,17 +140,44 @@ async function main() {
   await page.uncheck('#only-missing');
 
   // 다운로드
-  // headless Chromium 은 한글 다운로드 파일명을 그대로 전달하지 않으므로
-  // 프로그램이 만들어 내는 파일명은 화면 표시값으로 확인한다.
-  const shownName = (await page.locator('#download-name').textContent()).replace('파일명: ', '').trim();
-  check(/^부서회신자료_통합결과_\d{8}\.xlsx$/.test(shownName), '결과 파일명이 올바르다: ' + shownName);
-  const [download] = await Promise.all([page.waitForEvent('download'), page.click('#btn-download')]);
-  const outPath = path.join(tmp, 'result.xlsx');
-  await download.saveAs(outPath);
+  // ---------- 단계 5: 결과 파일 ----------
+  const planText = (await page.locator('#download-list').textContent()).replace(/\s+/g, ' ');
+  console.log('  · 만들어질 파일: ' + planText.replace('만들어질 파일', '').trim());
+  check(/한글 취합본/.test(planText) && /PDF 취합본/.test(planText), '자료 종류에 맞는 결과물을 안내한다');
+
+  await page.click('#btn-build');
+  await page.waitForSelector('#download-list table', { timeout: 60000 });
+  const outRows = page.locator('#download-list tbody tr');
+  const outCount = await outRows.count();
+  check(outCount === 4, '결과 파일 4개가 만들어진다 (실제: ' + outCount + ')');
+  const outNames = [];
+  for (let i = 0; i < outCount; i++) {
+    outNames.push((await outRows.nth(i).locator('td').nth(1).textContent()).trim());
+  }
+  console.log('  · ' + outNames.join(' | '));
+  check(/^부서회신자료_통합결과_\d{8}\.xlsx$/.test(outNames[0]), '회신현황 리포트 파일명');
+  check(/^부서회신자료_PDF취합본_\d{8}\.pdf$/.test(outNames[1]), 'PDF 취합본 파일명');
+  check(/^부서회신자료_한글취합본_\d{8}\.hwpx$/.test(outNames[2]), '한글 취합본 파일명');
+  check(/^부서회신자료_한글원본_\d{8}\.zip$/.test(outNames[3]), '원본 한글파일 묶음 파일명');
+
+  // 실제로 내려받아 내용을 확인한다
+  const saved = {};
+  for (let i = 0; i < outCount; i++) {
+    const [dl] = await Promise.all([
+      page.waitForEvent('download'),
+      outRows.nth(i).locator('button[data-dl]').click(),
+    ]);
+    const target = path.join(tmp, 'out' + i + path.extname(outNames[i]));
+    await dl.saveAs(target);
+    saved[outNames[i].replace(/_\d{8}\./, '.')] = target;
+  }
+
+  const outPath = saved['부서회신자료_통합결과.xlsx'];
   const wb = XLSX.read(fs.readFileSync(outPath), { type: 'buffer' });
   check(
-    JSON.stringify(wb.SheetNames) === JSON.stringify(['통합자료', '회신현황', '파일별처리결과', '오류및경고']),
-    '결과 엑셀에 4개 시트가 들어있다'
+    JSON.stringify(wb.SheetNames) ===
+      JSON.stringify(['통합자료', '회신현황', '파일별처리결과', '오류및경고', '취합순서']),
+    '결과 엑셀 시트 구성: ' + wb.SheetNames.join(', ')
   );
   const merged = XLSX.utils.sheet_to_json(wb.Sheets['통합자료'], { header: 1, defval: '', raw: false });
   check(merged.length > 1, '통합자료에 데이터가 들어있다 (' + (merged.length - 1) + '행)');
@@ -154,6 +185,27 @@ async function main() {
   const depts = merged.slice(1).map((r) => r[0]);
   check(depts.indexOf('기획예산과') === 0, '사용자가 고른 부서가 부서순서대로 맨 앞에 온다');
   check(depts[depts.length - 1] === '미확인', '미확인 자료가 맨 아래에 온다');
+  const orderSheet = XLSX.utils.sheet_to_json(wb.Sheets['취합순서'], { header: 1, defval: '', raw: false });
+  check(orderSheet.length === 5, '취합순서에 한글 2건 + PDF 2건이 적혀 있다');
+
+  const pdfBytes = fs.readFileSync(saved['부서회신자료_PDF취합본.pdf']);
+  const mergedPdf = await PDFDocument.load(pdfBytes);
+  check(mergedPdf.getPageCount() === 3, 'PDF 취합본 쪽수 (실제: ' + mergedPdf.getPageCount() + ')');
+
+  const hwpxBytes = fs.readFileSync(saved['부서회신자료_한글취합본.hwpx']);
+  const hzip = await JSZip.loadAsync(hwpxBytes);
+  check(
+    !!hzip.file('Contents/section0.xml') && !!hzip.file('Contents/header.xml'),
+    '한글 취합본이 HWPX 구조를 갖췄다'
+  );
+  const secXml = await hzip.file('Contents/section0.xml').async('string');
+  check(secXml.indexOf('도로과') > 0 && secXml.indexOf('건축과') > 0, '한글 취합본에 부서별 내용이 들어있다');
+
+  const zipBytes = fs.readFileSync(saved['부서회신자료_한글원본.zip']);
+  const ozip = await JSZip.loadAsync(zipBytes);
+  const zipNames = Object.keys(ozip.files).sort();
+  check(zipNames.length === 3, '원본 묶음에 원본 2개 + 안내 1개');
+  check(zipNames[1] === '01_도로과_자료제출.hwpx', '원본이 부서순서대로 번호가 붙는다');
 
   // 부서 설정 저장 후 다시 열기
   await page.click('#tab-depts');
@@ -166,7 +218,7 @@ async function main() {
   await page.click('#tab-depts');
   await page.waitForSelector('#dept-table tbody tr');
   const afterReload = await page.locator('#dept-table tbody tr').count();
-  check(afterReload === 76, '부서 설정이 다시 열어도 유지된다 (' + afterReload + '개)');
+  check(afterReload === 77, '부서 설정이 다시 열어도 유지된다 (' + afterReload + '개)');
   const stored = await page.evaluate(() => localStorage.getItem('cj_reply_collector.settings.v1') || '');
   check(stored.indexOf('테스트임시과') > 0, '부서 설정만 저장된다');
   check(stored.indexOf('시설 1') < 0 && stored.indexOf('.xlsx') < 0, '회신자료 내용은 저장하지 않는다');

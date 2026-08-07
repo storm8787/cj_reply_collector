@@ -18,6 +18,7 @@
     result: null,
     status: null,
     baseSchema: null,
+    outputs: [],
   };
 
   function $(id) {
@@ -90,6 +91,10 @@
     state.result = null;
     state.status = null;
     state.baseSchema = null;
+    state.outputs = [];
+    if ($('download-list')) $('download-list').innerHTML = '';
+    if ($('download-status')) $('download-status').textContent = '';
+    show($('btn-download-all'), false);
     show($('step-preview'), false);
     show($('step-download'), false);
   }
@@ -232,6 +237,9 @@
       var t = CJ.analyzer.selectedTable(f);
       return s + (f.include && t ? t.rowCount : 0);
     }, 0);
+    var docPages = files.reduce(function (s, f) {
+      return s + (f.include && f.documentOnly ? f.pageCount || 0 : 0);
+    }, 0);
 
     var cards = [
       { label: '업로드 파일', value: files.length + '개' },
@@ -242,6 +250,7 @@
       { label: '미회신 부서', value: status.notRepliedCount + '개', cls: status.notRepliedCount ? 'warn' : '' },
       { label: '취합 예정 데이터', value: rowTotal + '건' },
     ];
+    if (docPages) cards.push({ label: '원본 취합 쪽수', value: docPages + '쪽' });
     $('summary-cards').innerHTML = cards
       .map(function (c) {
         return (
@@ -311,7 +320,10 @@
               })
               .join('') +
             '</select>'
+          : f.documentOnly
+          ? '<span class="note">원본 문서 전체</span>'
           : '<span class="note">없음</span>';
+        var amount = table ? table.rowCount : f.documentOnly ? (f.pageCount || 0) + '쪽' : 0;
         return (
           '<tr class="' + rowCls + '">' +
           '<td><input type="checkbox" data-include="' + i + '"' + (f.include ? ' checked' : '') + '></td>' +
@@ -320,7 +332,7 @@
           '<td>' + esc(f.analyzedOnce ? CJ.analyzer.finalMethod(f) : '-') + '</td>' +
           '<td>' + statusCell(f) + '</td>' +
           '<td>' + tableSel + '</td>' +
-          '<td class="num">' + (table ? table.rowCount : 0) + '</td>' +
+          '<td class="num">' + amount + '</td>' +
           '<td><span class="note' + (rowCls === 'row-bad' ? ' bad' : rowCls ? ' warn' : '') + '">' +
           esc(notes.join(' / ')) + '</span></td>' +
           '</tr>'
@@ -366,7 +378,12 @@
     var area = $('schema-info');
     var base = state.baseSchema;
     if (!base) {
-      area.innerHTML = '<div class="msg bad">취합할 표를 찾은 파일이 없습니다. 파일이나 데이터표 선택을 확인해 주세요.</div>';
+      var onlyDocs = state.files.some(function (f) {
+        return f.include && f.documentOnly;
+      });
+      area.innerHTML = onlyDocs
+        ? '<div class="msg info">표로 읽을 자료가 없습니다. 원본 문서를 그대로 이어붙인 취합본만 만듭니다.</div>'
+        : '<div class="msg bad">취합할 표를 찾은 파일이 없습니다. 파일이나 데이터표 선택을 확인해 주세요.</div>';
       $('mapping-area').innerHTML = '';
       renderPrecheck();
       return;
@@ -433,13 +450,21 @@
     var msgs = [];
     if (!state.files.length) msgs.push({ cls: 'bad', text: '올린 파일이 없습니다.' });
     var usable = CJ.aggregate.includableFiles(state.files);
-    if (!usable.length) msgs.push({ cls: 'bad', text: '취합할 수 있는 파일이 없습니다.' });
+    var docOnly = state.files.filter(function (f) {
+      return f.include && f.documentOnly;
+    });
+    if (!usable.length && !docOnly.length) msgs.push({ cls: 'bad', text: '취합할 수 있는 파일이 없습니다.' });
+    if (docOnly.length)
+      msgs.push({
+        cls: 'info',
+        text: 'PDF ' + docOnly.length + '개는 표 대신 원본 쪽을 그대로 PDF 취합본에 넣습니다.',
+      });
     var noDept = usable.filter(function (f) {
       return !CJ.analyzer.finalDepartment(f);
     });
     if (noDept.length) msgs.push({ cls: 'warn', text: '부서를 확인하지 못한 파일 ' + noDept.length + '개는 결과 맨 아래에 미확인으로 들어갑니다.' });
     var noTable = state.files.filter(function (f) {
-      return f.include && f.analyzedOnce && !CJ.analyzer.selectedTable(f);
+      return f.include && f.analyzedOnce && !f.documentOnly && !CJ.analyzer.selectedTable(f);
     });
     if (noTable.length)
       msgs.push({
@@ -456,7 +481,7 @@
         return '<div class="msg ' + m.cls + '">' + esc(m.text) + '</div>';
       })
       .join('');
-    $('btn-aggregate').disabled = !usable.length;
+    $('btn-aggregate').disabled = !usable.length && !docOnly.length;
   }
 
   /* ---------------------------- 취합 ---------------------------- */
@@ -471,7 +496,7 @@
     renderFileTable();
     show($('step-preview'), true);
     show($('step-download'), true);
-    $('download-name').textContent = '파일명: ' + CJ.writer.defaultFileName();
+    renderOutputPlan();
     $('step-preview').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
@@ -550,13 +575,120 @@
     $('reply-table').innerHTML = head + '<tbody>' + body + (onlyMissing ? '' : extra) + '</tbody>';
   }
 
-  function download() {
-    try {
-      var wb = CJ.writer.buildWorkbook({ result: state.result, status: state.status, files: state.files });
-      CJ.writer.download(wb, CJ.writer.defaultFileName());
-    } catch (e) {
-      alert('결과 파일을 만들지 못했습니다. 취합 결과를 다시 확인해 주세요.');
+  /* -------------------------- 결과 파일 -------------------------- */
+  function readBytesOf(file) {
+    if (!file.blob) return Promise.reject(new Error('원본 파일을 찾을 수 없습니다.'));
+    return readArrayBuffer(file.blob).then(function (buf) {
+      return new Uint8Array(buf);
+    });
+  }
+
+  function buildOutputs() {
+    if (!state.result) return;
+    $('btn-build').disabled = true;
+    $('download-status').textContent = '결과 파일을 만드는 중입니다...';
+    $('download-list').innerHTML = '';
+    show($('btn-download-all'), false);
+    state.outputs = [];
+    return CJ.output
+      .buildAll({
+        result: state.result,
+        status: state.status,
+        files: state.files,
+        departments: state.store.departments,
+        readBytes: readBytesOf,
+      })
+      .then(function (res) {
+        state.outputs = res.outputs;
+        renderOutputs();
+        $('download-status').textContent = '결과 파일 ' + res.outputs.length + '개가 준비되었습니다.';
+        show($('btn-download-all'), res.outputs.length > 1);
+      })
+      .catch(function () {
+        $('download-status').textContent = '';
+        $('download-list').innerHTML =
+          '<div class="msg bad">결과 파일을 만들지 못했습니다. 취합 결과를 다시 확인해 주세요.</div>';
+      })
+      .then(function () {
+        $('btn-build').disabled = false;
+      });
+  }
+
+  var KIND_LABEL = { xlsx: '회신현황 리포트 (엑셀)', hwpx: '한글 취합본', zip: '원본 한글파일 묶음', pdf: 'PDF 취합본' };
+
+  /** 만들어질 결과물을 미리 안내한다 */
+  function renderOutputPlan() {
+    var p = CJ.output.plan(state.files, state.store.departments);
+    var items = ['<b>회신현황 리포트 (엑셀)</b> — 회신현황·파일별처리결과·오류및경고'];
+    if (p.excel.length) {
+      items.push('위 엑셀의 <b>통합자료</b> 시트 — 엑셀·CSV 회신자료 ' + p.excel.length + '개를 합친 취합본');
     }
+    if (p.hasHwp) {
+      items.push('<b>한글 취합본(hwpx)</b> + <b>원본 한글파일 묶음(zip)</b> — 한글 회신자료 ' + p.hwp.length + '개');
+    }
+    if (p.hasPdf) {
+      items.push('<b>PDF 취합본</b> — PDF 회신자료 ' + p.pdf.length + '개를 부서순서대로 이어붙임');
+    }
+    $('download-status').textContent = '';
+    $('download-list').innerHTML =
+      '<div class="msg info">만들어질 파일<ul class="help" style="margin:6px 0 0">' +
+      items
+        .map(function (t) {
+          return '<li>' + t + '</li>';
+        })
+        .join('') +
+      '</ul></div>';
+  }
+
+  function renderOutputs() {
+    var rows = state.outputs
+      .map(function (o, i) {
+        var size = o.data && o.data.size ? Math.max(1, Math.round(o.data.size / 1024)) + ' KB' : '';
+        return (
+          '<tr><td>' + esc(KIND_LABEL[o.kind] || o.kind) + '</td>' +
+          '<td>' + esc(o.name) + '</td>' +
+          '<td><span class="note">' + esc(o.description || '') + '</span></td>' +
+          '<td class="num">' + size + '</td>' +
+          '<td><button class="small" data-dl="' + i + '" type="button">내려받기</button></td></tr>'
+        );
+      })
+      .join('');
+    $('download-list').innerHTML =
+      '<table class="grid"><thead><tr><th>구분</th><th>파일명</th><th>내용</th>' +
+      '<th class="num">크기</th><th>받기</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      (state.outputs.some(function (o) { return o.kind === 'hwpx'; })
+        ? '<div class="msg warn">한글 취합본은 문단과 표의 <b>내용</b>만 옮겨 새로 만든 파일입니다. ' +
+          '글꼴·색상 등 원본 서식이 필요하거나 한/글에서 열리지 않으면 함께 받은 <b>원본 한글파일 묶음</b>을 사용해 주세요.</div>'
+        : '');
+    $('download-list')
+      .querySelectorAll('[data-dl]')
+      .forEach(function (el) {
+        el.addEventListener('click', function () {
+          saveOutput(state.outputs[+el.dataset.dl]);
+        });
+      });
+  }
+
+  function saveOutput(out) {
+    if (!out) return;
+    var url = URL.createObjectURL(out.data);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = out.name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 1000);
+  }
+
+  function saveAllOutputs() {
+    (state.outputs || []).forEach(function (o, i) {
+      setTimeout(function () {
+        saveOutput(o);
+      }, i * 400);
+    });
   }
 
   /* -------------------------- 부서 관리 -------------------------- */
@@ -752,7 +884,8 @@
       resetAll();
     });
     $('btn-aggregate').addEventListener('click', runAggregate);
-    $('btn-download').addEventListener('click', download);
+    $('btn-build').addEventListener('click', buildOutputs);
+    $('btn-download-all').addEventListener('click', saveAllOutputs);
     $('preview-dept').addEventListener('change', drawPreviewRows);
     $('preview-search').addEventListener('input', drawPreviewRows);
     $('only-missing').addEventListener('change', renderReply);

@@ -215,14 +215,43 @@
     return null;
   }
 
+  /**
+   * 한 줄에서 대표 필드 값 후보를 모두 뽑는다.
+   * PDF 처럼 줄바꿈이 사라져 여러 항목이 한 줄에 붙어 있는 경우도 처리한다.
+   */
+  function extractLabelValues(line) {
+    var out = [];
+    var text = T.normalizeText(line);
+    if (!text) return out;
+    var sp = splitLabelValue(text);
+    if (sp) out.push(sp.value);
+    // 두 칸 이상 띄어쓰기나 구분기호로 나뉜 항목들
+    text.split(/\s{2,}|[|\t]/).forEach(function (chunk) {
+      var s2 = splitLabelValue(chunk);
+      if (s2) out.push(s2.value);
+    });
+    // 줄 가운데에 "담당부서 : 값" 형태로 들어있는 경우 (라벨 + 콜론이 붙어 있을 때만)
+    FIELD_LABELS.forEach(function (label) {
+      var at = 0;
+      for (;;) {
+        var idx = text.indexOf(label, at);
+        if (idx < 0) break;
+        var m = /^\s*[:：]\s*([^\s:：].{0,29})/.exec(text.slice(idx + label.length));
+        if (m) out.push(T.normalizeText(m[1]));
+        at = idx + label.length;
+      }
+    });
+    return out;
+  }
+
   /** 2순위: 문서 내부 대표 필드 */
   function detectFromFields(doc, index, options) {
     var hits = [];
     (doc.paragraphs || []).forEach(function (line, i) {
-      var sp = splitLabelValue(line);
-      if (!sp) return;
-      matchValue(sp.value, index).forEach(function (d) {
-        hits.push({ dept: d, at: '본문 ' + (i + 1) + '번째 줄' });
+      extractLabelValues(line).forEach(function (value) {
+        matchValue(value, index).forEach(function (d) {
+          hits.push({ dept: d, at: '본문 ' + (i + 1) + '번째 줄' });
+        });
       });
     });
     (doc.sections || []).forEach(function (sec) {
@@ -311,6 +340,7 @@
     findTerms: findTerms,
     isFieldLabel: isFieldLabel,
     splitLabelValue: splitLabelValue,
+    extractLabelValues: extractLabelValues,
     matchValue: matchValue,
     detectFromFileName: detectFromFileName,
     detectFromFields: detectFromFields,
