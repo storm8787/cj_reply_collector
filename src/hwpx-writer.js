@@ -362,9 +362,9 @@
    * 서식 정보를 가져올 수 없는 원본(hwp 바이너리 등)의 내용을 문단·표로 다시 만든다.
    * 취합본의 기본 번호표(reg)에 있는 글자모양·문단모양을 쓴다.
    */
-  function plainBody(reg, paragraphs, tables, headingText) {
+  function plainBody(reg, paragraphs, tables, headingText, pageBreak) {
     var body = '';
-    if (headingText) body += para(headingText, { bold: true });
+    if (headingText) body += para(headingText, { bold: true, pageBreak: !!pageBreak });
     (paragraphs || []).slice(0, MAX_PARAGRAPHS_PER_FILE).forEach(function (p) {
       var line = T.collapseSpace(p);
       if (line) body += para(line);
@@ -381,8 +381,59 @@
     return body;
   }
 
+
+  /**
+   * 한글(hwpx) 원본이 하나도 없을 때만 쓰는 대비 경로.
+   * 서식 정보를 가져올 수 없는 hwp 원본들의 내용만 담아 HWPX 를 새로 만든다.
+   * hwpx 원본이 하나라도 있으면 hwpx-merger 가 원본 서식을 살려 합친다.
+   */
+  function buildPlainDocument(blocks, options) {
+    var opts = options || {};
+    var JSZipRef = global.JSZip || (typeof JSZip !== 'undefined' ? JSZip : null);
+    if (!JSZipRef) return Promise.reject(new Error('한글 취합본을 만드는 기능을 사용할 수 없습니다.'));
+    var reg = { ownCharPr: 0, ownCharPrBold: 1, ownParaPr: 0, ownStyle: 0 };
+    var body = '';
+    (blocks || []).forEach(function (b, i) {
+      body += plainBody(reg, b.paragraphs, b.tables, '■ ' + b.department, i > 0);
+    });
+    var sectionXml =
+      xmlHead() +
+      '<hs:sec xmlns:hs="' + NS_SEC + '" xmlns:hp="' + NS_PARA + '" xmlns:hc="' + NS_CORE +
+      '" xmlns:hh="' + NS_HEAD + '">' +
+      firstParagraphWithSecPr() +
+      body +
+      '</hs:sec>';
+
+    var zip = new JSZipRef();
+    zip.file('mimetype', 'application/hwp+zip', { compression: 'STORE' });
+    zip.file('version.xml', versionXml());
+    zip.file('META-INF/container.xml', containerXml());
+    zip.file('META-INF/manifest.xml', manifestXml(1, []));
+    zip.file('Contents/content.hpf', contentHpf(opts.title || '부서 회신자료 통합본', 1, []));
+    zip.file('Contents/header.xml', headerXml());
+    zip.file('Contents/section0.xml', sectionXml);
+    return zip
+      .generateAsync({
+        type: opts.zipType || 'blob',
+        mimeType: 'application/hwp+zip',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 },
+      })
+      .then(function (blob) {
+        return { blob: blob, warnings: [], documentCount: (blocks || []).length };
+      });
+  }
+
+  function firstParagraphWithSecPr() {
+    return (
+      '<hp:p paraPrIDRef="0" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">' +
+      '<hp:run charPrIDRef="0">' + secPr() + '<hp:t/></hp:run></hp:p>'
+    );
+  }
+
   CJ.hwpxWriter = {
     plainBody: plainBody,
+    buildPlainDocument: buildPlainDocument,
     baseRefList: baseRefList,
     escapeXml: esc,
     versionXml: versionXml,

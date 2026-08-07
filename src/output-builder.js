@@ -110,10 +110,17 @@
       });
     });
     return chain.then(function () {
-      return CJ.hwpxMerger.merge(sources, {
+      var hasHwpx = sources.some(function (s) {
+        return s.kind === 'hwpx' && s.bytes;
+      });
+      if (hasHwpx) {
+        // 첫 hwpx 를 바탕으로 원본 서식을 그대로 살려 합친다
+        return CJ.hwpxMerger.merge(sources, { zipType: options.zipType });
+      }
+      // hwpx 원본이 하나도 없으면(구형 hwp 만) 내용만 담아 새로 만든다
+      return CJ.hwpxWriter.buildPlainDocument(sources, {
         title: options.title,
         zipType: options.zipType,
-        showHeading: options.showHeading,
       });
     });
   }

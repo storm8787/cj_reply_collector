@@ -6,6 +6,8 @@ global.XLSX = require(path.resolve(__dirname, '../node_modules/xlsx'));
 global.JSZip = require(path.resolve(__dirname, '../node_modules/jszip'));
 global.pdfjsLib = require(path.resolve(__dirname, '../node_modules/pdfjs-dist/legacy/build/pdf.js'));
 global.PDFLib = require(path.resolve(__dirname, '../node_modules/pdf-lib'));
+// 브라우저의 DOMParser/XMLSerializer 를 Node 테스트에서 대신한다
+global.CJ_DOM = require(path.resolve(__dirname, '../node_modules/@xmldom/xmldom'));
 
 [
   'text-utils',
@@ -22,6 +24,7 @@ global.PDFLib = require(path.resolve(__dirname, '../node_modules/pdf-lib'));
   'analyzer',
   'aggregator',
   'excel-writer',
+  'hwpx-dom',
   'hwpx-writer',
   'hwpx-merger',
   'output-builder',

@@ -74,7 +74,13 @@ async function hwpxFile(paragraphs, tables, opts) {
     '<?xml version="1.0" encoding="UTF-8"?><odf:manifest xmlns:odf="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0">' +
       '<odf:file-entry odf:full-path="/" odf:media-type="application/hwp+zip"/>' + encryption + '</odf:manifest>'
   );
-  zip.file('Contents/content.hpf', '<?xml version="1.0" encoding="UTF-8"?><opf:package xmlns:opf="http://www.idpf.org/2007/opf/"/>');
+  zip.file(
+    'Contents/content.hpf',
+    '<?xml version="1.0" encoding="UTF-8"?><opf:package xmlns:opf="http://www.idpf.org/2007/opf/">' +
+      '<opf:manifest><opf:item id="header" href="Contents/header.xml" media-type="application/xml"/>' +
+      '</opf:manifest></opf:package>'
+  );
+  zip.file('Contents/header.xml', styledHeaderXml());
   zip.file('Contents/section0.xml', hwpxSection(paragraphs, tables));
   const buf = await zip.generateAsync({ type: 'nodebuffer' });
   return new Uint8Array(buf);
@@ -235,15 +241,35 @@ async function hwpxPackage(headerXml, sectionXml, extraFiles) {
     '<?xml version="1.0" encoding="UTF-8"?><odf:manifest xmlns:odf="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0">' +
       '<odf:file-entry odf:full-path="/" odf:media-type="application/hwp+zip"/></odf:manifest>'
   );
-  zip.file('Contents/content.hpf', '<?xml version="1.0" encoding="UTF-8"?><opf:package xmlns:opf="http://www.idpf.org/2007/opf/"/>');
+  zip.file(
+    'Contents/content.hpf',
+    '<?xml version="1.0" encoding="UTF-8"?><opf:package xmlns:opf="http://www.idpf.org/2007/opf/">' +
+      '<opf:manifest>' +
+      '<opf:item id="header" href="Contents/header.xml" media-type="application/xml"/>' +
+      '<opf:item id="section0" href="Contents/section0.xml" media-type="application/xml"/>' +
+      Object.keys(extraFiles || {})
+        .filter((n) => /^BinData\//.test(n))
+        .map((n) => '<opf:item id="' + n.split('/').pop().replace(/\.[^.]+$/, '') + '" href="' + n + '" media-type="image/png"/>')
+        .join('') +
+      '</opf:manifest><opf:spine><opf:itemref idref="section0" linear="yes"/></opf:spine></opf:package>'
+  );
   zip.file('Contents/header.xml', headerXml);
   zip.file('Contents/section0.xml', sectionXml);
   Object.keys(extraFiles || {}).forEach((n) => zip.file(n, extraFiles[n]));
   return new Uint8Array(await zip.generateAsync({ type: 'nodebuffer' }));
 }
 
-function hwpxStyledFile() {
-  return hwpxPackage(styledHeaderXml(), styledSectionXml());
+function hwpxStyledFile(extra) {
+  return hwpxPackage(styledHeaderXml(), styledSectionXml(), extra);
+}
+
+/* 실제 한/글 문서처럼 부가 설정 파일이 붙어 있는 HWPX */
+function hwpxRichFile() {
+  return hwpxPackage(styledHeaderXml(), styledSectionXml(), {
+    'settings.xml': '<?xml version="1.0" encoding="UTF-8"?><ha:HWPApplicationSetting xmlns:ha="http://www.hancom.co.kr/hwpml/2011/app"><ha:CaretPosition listIDRef="0" paraIDRef="0" pos="0"/></ha:HWPApplicationSetting>',
+    'Preview/PrvText.txt': '미리보기 텍스트',
+    'DocOptions/DrmLicense.xml': '<?xml version="1.0" encoding="UTF-8"?><license/>',
+  });
 }
 
 function hwpxImageFile() {
@@ -513,6 +539,7 @@ async function buildSamples() {
 
 module.exports = {
   hwpxStyledFile,
+  hwpxRichFile,
   hwpxImageFile,
   hwpxPackage,
   styledHeaderXml,
