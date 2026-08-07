@@ -29,7 +29,7 @@
 
   function makeNode(name) {
     var local = name.indexOf(':') >= 0 ? name.split(':').pop() : name;
-    return { name: name, local: local, attrs: {}, children: [], text: '' };
+    return { name: name, local: local, attrs: {}, children: [], text: '', start: -1, end: -1 };
   }
 
   function parseAttrs(node, src) {
@@ -87,6 +87,7 @@
         var closing = inner.slice(1).trim();
         for (var s = stack.length - 1; s > 0; s--) {
           if (stack[s].name === closing) {
+            stack[s].end = i;
             stack.length = s;
             break;
           }
@@ -98,11 +99,32 @@
       var sp = inner.search(/[\s\/]/);
       var tagName = sp < 0 ? inner : inner.slice(0, sp);
       var node = makeNode(tagName.trim());
+      node.start = lt;
+      if (selfClose) node.end = i;
       if (sp >= 0) parseAttrs(node, inner.slice(sp));
       stack[stack.length - 1].children.push(node);
       if (!selfClose) stack.push(node);
     }
+    root.source = xml;
+    root.start = 0;
+    root.end = xml.length;
     return root;
+  }
+
+  /** 노드에 해당하는 원본 XML 조각을 그대로 돌려준다 (서식 보존용) */
+  function outerXml(source, node) {
+    if (!node || node.start < 0 || node.end <= node.start) return '';
+    return source.slice(node.start, node.end);
+  }
+
+  /** 루트 요소에 선언된 xmlns 를 모은다 */
+  function namespacesOf(node) {
+    var out = {};
+    if (!node) return out;
+    Object.keys(node.attrs || {}).forEach(function (k) {
+      if (k === 'xmlns' || k.indexOf('xmlns:') === 0) out[k] = node.attrs[k];
+    });
+    return out;
   }
 
   function appendText(node, raw) {
@@ -141,5 +163,13 @@
     return buf;
   }
 
-  CJ.xml = { parse: parse, findAll: findAll, childrenOf: childrenOf, textOf: textOf, decodeEntities: decodeEntities };
+  CJ.xml = {
+    parse: parse,
+    findAll: findAll,
+    childrenOf: childrenOf,
+    textOf: textOf,
+    outerXml: outerXml,
+    namespacesOf: namespacesOf,
+    decodeEntities: decodeEntities,
+  };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

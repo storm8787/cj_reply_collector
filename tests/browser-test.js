@@ -198,8 +198,17 @@ async function main() {
     !!hzip.file('Contents/section0.xml') && !!hzip.file('Contents/header.xml'),
     '한글 취합본이 HWPX 구조를 갖췄다'
   );
-  const secXml = await hzip.file('Contents/section0.xml').async('string');
-  check(secXml.indexOf('도로과') > 0 && secXml.indexOf('건축과') > 0, '한글 취합본에 부서별 내용이 들어있다');
+  const secNames = Object.keys(hzip.files).filter((n) => /^Contents\/section\d+\.xml$/.test(n)).sort();
+  check(secNames.length === 2, '원본 문서마다 구역이 하나씩 만들어졌다 (' + secNames.length + ')');
+  let allSec = '';
+  for (const n of secNames) allSec += await hzip.file(n).async('string');
+  check(allSec.indexOf('도로과') > 0 && allSec.indexOf('건축과') > 0, '한글 취합본에 부서별 내용이 들어있다');
+  check(allSec.indexOf('도로-001') > 0, '원본 표 내용이 들어있다');
+  check(!/통합본/.test(allSec), '프로그램이 만든 문서 제목이 없다');
+  check(!/자료제출\.hwpx/.test(allSec), '원본 파일명이 본문에 나오지 않는다');
+  // hwpx 원본의 서식(번호표)이 취합본으로 넘어왔는지
+  const mergedHeader = await hzip.file('Contents/header.xml').async('string');
+  check(/secCnt="2"/.test(mergedHeader), '구역 수가 머리말에 반영되었다');
 
   const zipBytes = fs.readFileSync(saved['부서회신자료_한글원본.zip']);
   const ozip = await JSZip.loadAsync(zipBytes);

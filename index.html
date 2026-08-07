@@ -160,7 +160,8 @@
         <ul class="help">
           <li><b>회신현황 리포트(엑셀)</b> — 회신현황·파일별처리결과·오류및경고, 그리고 표로 읽어낸 통합자료</li>
           <li>엑셀·CSV 자료를 올렸으면 → 위 엑셀의 <code>통합자료</code> 시트가 취합본입니다</li>
-          <li>한글 자료를 올렸으면 → <b>한글취합본(hwpx)</b> 과 <b>원본 한글파일 묶음(zip)</b> 을 함께 만듭니다</li>
+          <li>한글 자료를 올렸으면 → <b>한글취합본(hwpx)</b> 과 <b>원본 한글파일 묶음(zip)</b> 을 함께 만듭니다.
+            취합본은 hwpx 원본의 글꼴·크기·색·표 서식을 그대로 살립니다 (hwp 구형 파일은 내용만)</li>
           <li>PDF 자료를 올렸으면 → 원본 쪽을 부서순서대로 이어붙인 <b>PDF 취합본</b> 을 만듭니다</li>
         </ul>
         <div class="help-h">안내</div>
@@ -196,6 +197,7 @@
 <script src="src/aggregator.js"></script>
 <script src="src/excel-writer.js"></script>
 <script src="src/hwpx-writer.js"></script>
+<script src="src/hwpx-merger.js"></script>
 <script src="src/output-builder.js"></script>
 <script src="src/app.js"></script>
 </body>

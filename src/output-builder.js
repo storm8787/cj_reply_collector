@@ -73,24 +73,49 @@
     return s;
   }
 
-  /** 한글 취합본(HWPX) - 각 문서의 문단과 표를 부서순서대로 */
-  function buildHwpx(entries, title) {
-    var blocks = entries.map(function (e) {
-      var doc = e.file.doc || {};
-      return {
-        department: e.department,
-        fileName: e.file.fileName,
-        paragraphs: (doc.paragraphs || []).slice(),
-        tables: (doc.sections || [])
-          .filter(function (s) {
-            return s.textGrid && s.textGrid.length;
+  /**
+   * 한글 취합본(HWPX) - 부서순서대로, 원본 서식을 살려서 합친다.
+   * hwpx 원본은 서식까지, hwp(바이너리) 원본은 내용만 옮겨진다.
+   */
+  function buildHwpx(entries, readBytes, opts) {
+    var options = opts || {};
+    var chain = Promise.resolve();
+    var sources = [];
+    entries.forEach(function (e) {
+      chain = chain.then(function () {
+        var doc = e.file.doc || {};
+        var common = {
+          department: e.department,
+          fileName: e.file.fileName,
+          paragraphs: (doc.paragraphs || []).slice(),
+          tables: (doc.sections || [])
+            .filter(function (s) {
+              return s.textGrid && s.textGrid.length;
+            })
+            .map(function (s) {
+              return s.textGrid;
+            }),
+        };
+        if (e.file.ext !== 'hwpx') {
+          sources.push(Object.assign({ kind: 'hwp' }, common));
+          return null;
+        }
+        return readBytes(e.file)
+          .then(function (bytes) {
+            sources.push(Object.assign({ kind: 'hwpx', bytes: bytes }, common));
           })
-          .map(function (s) {
-            return s.textGrid;
-          }),
-      };
+          .catch(function () {
+            sources.push(Object.assign({ kind: 'hwp' }, common));
+          });
+      });
     });
-    return CJ.hwpxWriter.build(blocks, { title: title });
+    return chain.then(function () {
+      return CJ.hwpxMerger.merge(sources, {
+        title: options.title,
+        zipType: options.zipType,
+        showHeading: options.showHeading,
+      });
+    });
   }
 
   /** 원본 한글파일 ZIP - 부서순서대로 번호를 붙여 담는다 */
@@ -208,12 +233,20 @@
     if (p.hasHwp) {
       chain = chain
         .then(function () {
-          return buildHwpx(p.hwp, '부서 회신자료 통합본 (' + suffix + ')').then(function (blob) {
+          return buildHwpx(p.hwp, ctx.readBytes, {
+            title: '부서 회신자료 통합본',
+            zipType: ctx.zipType,
+            showHeading: ctx.showHeading,
+          }).then(function (res) {
+            extras.hwpxWarnings = res.warnings;
+            var plainCount = (res.warnings || []).length;
             outputs.push({
               kind: 'hwpx',
               name: '부서회신자료_한글취합본_' + suffix + '.hwpx',
-              data: blob,
-              description: '한글 회신자료 ' + p.hwp.length + '개의 문단·표를 부서순서대로 합친 한글 파일',
+              data: res.blob,
+              description:
+                '한글 회신자료 ' + p.hwp.length + '개를 부서순서대로 합친 한글 파일 (원본 서식 유지)' +
+                (plainCount ? ' — 그 중 ' + plainCount + '개는 내용만' : ''),
             });
           });
         })

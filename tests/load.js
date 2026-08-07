@@ -23,6 +23,7 @@ global.PDFLib = require(path.resolve(__dirname, '../node_modules/pdf-lib'));
   'aggregator',
   'excel-writer',
   'hwpx-writer',
+  'hwpx-merger',
   'output-builder',
 ].forEach((f) => require(path.resolve(__dirname, '../src/' + f + '.js')));
 

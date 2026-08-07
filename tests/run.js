@@ -677,18 +677,24 @@ test('34) HWPX 취합본을 만들고 다시 읽을 수 있다', async () => {
   const entries = CJ.output.plan(RESULTS, departments).hwp;
   assert.equal(entries.length, 2, '한글 회신자료 수');
   assert.deepEqual(entries.map((e) => e.department), ['도로과', '건축과'], '15번 < 16번');
-  const blob = await CJ.hwpxWriter.build(
-    entries.map((e) => ({
+  const sources = [];
+  for (const e of entries) {
+    const doc = e.file.doc;
+    const common = {
       department: e.department,
       fileName: e.file.fileName,
-      paragraphs: (e.file.doc.paragraphs || []).slice(),
-      tables: (e.file.doc.sections || []).map((sec) => sec.textGrid),
-    })),
-    { title: '테스트 통합본' }
-  );
-  const bytes = Buffer.from(await blob.arrayBuffer());
+      paragraphs: (doc.paragraphs || []).slice(),
+      tables: (doc.sections || []).map((sec) => sec.textGrid),
+    };
+    sources.push(
+      e.file.ext === 'hwpx'
+        ? Object.assign({ kind: 'hwpx', bytes: await readBytes(e.file) }, common)
+        : Object.assign({ kind: 'hwp' }, common)
+    );
+  }
+  const res = await CJ.hwpxMerger.merge(sources, { zipType: 'nodebuffer' });
   // 만들어진 HWPX 를 이 프로그램의 HWPX 읽기로 되읽어 본다
-  const doc = await CJ.hwpx.read(new Uint8Array(bytes), '취합본.hwpx');
+  const doc = await CJ.hwpx.read(new Uint8Array(res.blob), '취합본.hwpx');
   assert.equal(doc.support, 'supported');
   const text = doc.paragraphs.join(' ');
   assert.ok(text.indexOf('도로과') >= 0, '도로과 구간 존재');
@@ -696,18 +702,82 @@ test('34) HWPX 취합본을 만들고 다시 읽을 수 있다', async () => {
   const gridText = doc.sections.map((s) => s.textGrid.map((r) => r.join('|')).join(' ')).join(' ');
   assert.ok(gridText.indexOf('관리번호') >= 0, '표 머리글이 옮겨졌다');
   assert.ok(gridText.indexOf('도로-001') >= 0, '표 내용이 옮겨졌다');
+  assert.ok(gridText.indexOf('건축-001') >= 0, 'hwp 원본 표 내용도 옮겨졌다');
+});
+
+test('34-2) 취합본 맨 위에 프로그램이 만든 문서 제목을 넣지 않는다', async () => {
+  await analyzeSamples();
+  const bytes = await readBytes(byName('자료제출.hwpx'));
+  const res = await CJ.hwpxMerger.merge(
+    [{ kind: 'hwpx', department: '도로과', fileName: '자료제출.hwpx', bytes }],
+    { zipType: 'nodebuffer' }
+  );
+  const doc = await CJ.hwpx.read(new Uint8Array(res.blob), '취합본.hwpx');
+  assert.equal(doc.paragraphs[0], '■ 도로과', '첫 줄은 부서 구분줄');
+  assert.ok(
+    !doc.paragraphs.some((p) => /통합본/.test(p)),
+    '문서 제목 줄이 없다'
+  );
+  assert.ok(
+    !doc.paragraphs.some((p) => /자료제출\.hwpx/.test(p)),
+    '원본 파일명이 본문에 나오지 않는다'
+  );
+});
+
+test('34-3) 원본의 글자모양·문단모양이 취합본에 그대로 옮겨진다', async () => {
+  const source = await F.hwpxStyledFile();
+  const res = await CJ.hwpxMerger.merge(
+    [{ kind: 'hwpx', department: '도로과', fileName: '서식문서.hwpx', bytes: source }],
+    { zipType: 'nodebuffer' }
+  );
+  const zip = await global.JSZip.loadAsync(res.blob);
+  const header = await zip.file('Contents/header.xml').async('string');
+  const section = await zip.file('Contents/section0.xml').async('string');
+  // 원본이 쓰던 글꼴과 글자 크기가 번호표에 들어가 있어야 한다
+  assert.ok(header.indexOf('맑은 고딕') > 0, '원본 글꼴이 옮겨졌다');
+  assert.ok(/height="1600"/.test(header), '원본 글자 크기(16pt)가 옮겨졌다');
+  assert.ok(header.indexOf('#FF0000') > 0, '원본 글자 색이 옮겨졌다');
+  // 원본의 번호는 기본 번호표 뒤로 밀려서 새 번호를 받는다
+  const root = CJ.xml.parse(header);
+  const charPrs = CJ.xml.findAll(root, 'charPr');
+  assert.equal(charPrs.length, 4, '기본 2개 + 원본 2개');
+  const ids = charPrs.map((c) => c.attrs.id);
+  assert.deepEqual(ids, ['0', '1', '2', '3'], '번호가 0..n 으로 다시 매겨진다');
+  // 본문의 참조도 새 번호를 가리켜야 한다 (원본 charPr 1 → 3)
+  assert.ok(/charPrIDRef="3"/.test(section), '본문 참조가 새 번호로 바뀌었다');
+  assert.ok(!/charPrIDRef="9"/.test(section), '원본 번호가 그대로 남아있지 않다');
+});
+
+test('34-4) 원본에 들어있던 그림 파일도 함께 옮겨진다', async () => {
+  const source = await F.hwpxImageFile();
+  const res = await CJ.hwpxMerger.merge(
+    [{ kind: 'hwpx', department: '도로과', fileName: '그림문서.hwpx', bytes: source }],
+    { zipType: 'nodebuffer' }
+  );
+  const zip = await global.JSZip.loadAsync(res.blob);
+  const binNames = Object.keys(zip.files).filter((n) => /^BinData\/./.test(n) && !zip.files[n].dir);
+  assert.equal(binNames.length, 1, '그림 파일이 옮겨졌다');
+  assert.equal(binNames[0], 'BinData/d0_image1.png');
+  const section = await zip.file('Contents/section0.xml').async('string');
+  assert.ok(/binaryItemIDRef="d0_image1"/.test(section), '그림 참조가 새 이름을 가리킨다');
+  const hpf = await zip.file('Contents/content.hpf').async('string');
+  assert.ok(hpf.indexOf('BinData/d0_image1.png') > 0, '목록에도 등록되었다');
 });
 
 test('35) HWPX 취합본의 필수 구성요소가 모두 들어있다', async () => {
   await analyzeSamples();
-  const blob = await CJ.hwpxWriter.build(
-    [{ department: '도로과', fileName: 'a.hwpx', paragraphs: ['내용'], tables: [[['가', '나']]] }],
-    {}
+  const bytes = await readBytes(byName('자료제출.hwpx'));
+  const res = await CJ.hwpxMerger.merge(
+    [
+      { kind: 'hwpx', department: '도로과', fileName: '자료제출.hwpx', bytes },
+      { kind: 'hwp', department: '건축과', fileName: 'b.hwp', paragraphs: ['내용'], tables: [[['가', '나']]] },
+    ],
+    { zipType: 'nodebuffer' }
   );
-  const zip = await global.JSZip.loadAsync(Buffer.from(await blob.arrayBuffer()));
+  const zip = await global.JSZip.loadAsync(res.blob);
   const names = Object.keys(zip.files);
   ['mimetype', 'version.xml', 'META-INF/container.xml', 'META-INF/manifest.xml',
-   'Contents/content.hpf', 'Contents/header.xml', 'Contents/section0.xml'].forEach((n) => {
+   'Contents/content.hpf', 'Contents/header.xml', 'Contents/section0.xml', 'Contents/section1.xml'].forEach((n) => {
     assert.ok(names.indexOf(n) >= 0, n + ' 누락');
   });
   assert.equal(await zip.file('mimetype').async('string'), 'application/hwp+zip');
@@ -716,6 +786,16 @@ test('35) HWPX 취합본의 필수 구성요소가 모두 들어있다', async (
     const xml = await zip.file(n).async('string');
     assert.ok(CJ.xml.parse(xml) !== null, n + ' 형식 오류');
   }
+  // 구역 수와 목록이 서로 맞아야 한다
+  const header = await zip.file('Contents/header.xml').async('string');
+  assert.ok(/secCnt="2"/.test(header), '구역 수 표시');
+  const hpf = await zip.file('Contents/content.hpf').async('string');
+  assert.ok(hpf.indexOf('Contents/section1.xml') > 0, '구역이 목록에 등록되었다');
+  const manifest = await zip.file('META-INF/manifest.xml').async('string');
+  assert.ok(manifest.indexOf('Contents/section1.xml') > 0, '구역이 manifest 에 등록되었다');
+  // 서식을 가져올 수 없는 hwp 원본은 안내가 남는다
+  assert.equal(res.warnings.length, 1);
+  assert.ok(/서식 정보를 가져올 수 없어/.test(res.warnings[0].message));
 });
 
 test('36) 원본 한글파일 묶음(ZIP)에 원본이 그대로 들어간다', async () => {

@@ -657,8 +657,10 @@
       '<table class="grid"><thead><tr><th>구분</th><th>파일명</th><th>내용</th>' +
       '<th class="num">크기</th><th>받기</th></tr></thead><tbody>' + rows + '</tbody></table>' +
       (state.outputs.some(function (o) { return o.kind === 'hwpx'; })
-        ? '<div class="msg warn">한글 취합본은 문단과 표의 <b>내용</b>만 옮겨 새로 만든 파일입니다. ' +
-          '글꼴·색상 등 원본 서식이 필요하거나 한/글에서 열리지 않으면 함께 받은 <b>원본 한글파일 묶음</b>을 사용해 주세요.</div>'
+        ? '<div class="msg info">한글 취합본은 원본의 글꼴·크기·색·표 서식을 그대로 살려 부서순서대로 합칩니다. ' +
+          '문서마다 구역이 나뉘어 용지·여백 설정도 유지됩니다. ' +
+          '다만 <b>hwp(구형) 파일은 서식 정보를 가져올 수 없어 내용만</b> 옮겨집니다. ' +
+          '취합본이 한/글에서 열리지 않으면 함께 받은 <b>원본 한글파일 묶음</b>을 사용해 주세요.</div>'
         : '');
     $('download-list')
       .querySelectorAll('[data-dl]')
