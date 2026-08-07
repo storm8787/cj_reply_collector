@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-src 'none'; object-src 'none'">
+<title>부서 회신자료 자동취합기</title>
+<link rel="stylesheet" href="src/styles.css">
+</head>
+<body>
+<header class="app-header">
+  <h1>부서 회신자료 자동취합기</h1>
+  <p>여러 부서의 회신자료를 자동으로 정리·취합합니다. 모든 처리는 이 컴퓨터 안에서만 이루어집니다.</p>
+  <nav class="tabs">
+    <button id="tab-collect" class="active" type="button">자료 취합</button>
+    <button id="tab-depts" type="button">부서 관리</button>
+    <button id="tab-help" type="button">도움말</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ================= 자료 취합 ================= -->
+  <div id="page-collect">
+    <section class="step">
+      <h2><span class="step-no">단계 1</span>파일 업로드</h2>
+      <div class="body">
+        <div id="dropzone">
+          <strong>여기에 회신파일을 끌어다 놓으세요</strong>
+          여러 개를 한 번에 올릴 수 있습니다. (엑셀 xlsx·xlsm·xls, CSV, 한글 hwpx·hwp)
+        </div>
+        <input id="file-input" type="file" multiple class="hidden"
+               accept=".xlsx,.xlsm,.xls,.csv,.hwpx,.hwp">
+        <div class="btn-row">
+          <button id="btn-pick" type="button">파일 추가</button>
+          <button id="btn-analyze" class="primary" type="button" disabled>분석 시작</button>
+          <button id="btn-cancel" type="button" class="hidden">분석 취소</button>
+          <button id="btn-reset" type="button">초기화</button>
+          <span id="file-count" class="note"></span>
+        </div>
+        <div id="progress" class="progress-wrap hidden">
+          <div class="progress-bar"><div id="progress-fill"></div></div>
+          <div id="progress-text" class="progress-text"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="step hidden" id="step-summary">
+      <h2>분석 요약</h2>
+      <div class="body"><div id="summary-cards" class="cards"></div></div>
+    </section>
+
+    <section class="step hidden" id="step-files">
+      <h2><span class="step-no">단계 2</span>파일 분석 및 부서 판별</h2>
+      <div class="body">
+        <p class="note">판별부서가 잘못되었으면 목록에서 직접 고르세요. 직접 고른 값이 최종값이 됩니다.</p>
+        <div class="table-scroll"><table class="grid" id="file-table"></table></div>
+      </div>
+    </section>
+
+    <section class="step hidden" id="step-schema">
+      <h2><span class="step-no">단계 3</span>취합 대상 및 서식 확인</h2>
+      <div class="body">
+        <div id="schema-info"></div>
+        <div id="mapping-area"></div>
+        <div class="btn-row">
+          <button id="btn-aggregate" class="primary" type="button">취합하기</button>
+        </div>
+        <div id="precheck"></div>
+      </div>
+    </section>
+
+    <section class="step hidden" id="step-preview">
+      <h2><span class="step-no">단계 4</span>취합 결과 미리보기</h2>
+      <div class="body">
+        <div class="filter-row">
+          <label>부서
+            <select id="preview-dept"><option value="">전체</option></select>
+          </label>
+          <label>검색
+            <input id="preview-search" type="search" placeholder="키워드 입력">
+          </label>
+          <span id="preview-count" class="note"></span>
+        </div>
+        <div class="table-scroll"><table class="grid" id="preview-table"></table></div>
+        <div class="help-h">회신현황 (미회신 부서 확인)</div>
+        <div class="filter-row">
+          <label><input type="checkbox" id="only-missing"> 미회신 부서만 보기</label>
+          <span id="reply-count" class="note"></span>
+        </div>
+        <div class="table-scroll" style="max-height:320px"><table class="grid" id="reply-table"></table></div>
+      </div>
+    </section>
+
+    <section class="step hidden" id="step-download">
+      <h2><span class="step-no">단계 5</span>결과 다운로드</h2>
+      <div class="body">
+        <p class="note">통합자료 · 회신현황 · 파일별처리결과 · 오류및경고 4개 시트가 들어있는 엑셀 파일이 만들어집니다.</p>
+        <div class="btn-row">
+          <button id="btn-download" class="primary" type="button">결과 다운로드</button>
+          <span id="download-name" class="note"></span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ================= 부서 관리 ================= -->
+  <div id="page-depts" class="hidden">
+    <section class="step">
+      <h2>부서 관리</h2>
+      <div class="body">
+        <div id="dept-msg"></div>
+        <div class="btn-row">
+          <input id="new-dept-name" type="text" placeholder="추가할 부서명">
+          <button id="btn-dept-add" type="button">부서 추가</button>
+          <button id="btn-dept-save" class="primary" type="button">저장</button>
+          <button id="btn-dept-reset" type="button">기본 부서목록으로 초기화</button>
+          <button id="btn-dept-export" type="button">부서설정 내보내기</button>
+          <button id="btn-dept-import" type="button">부서설정 가져오기</button>
+          <input id="dept-import-input" type="file" accept=".json,application/json" class="hidden">
+        </div>
+        <p class="note">별칭은 쉼표(,)로 구분해 여러 개 입력할 수 있습니다. 순서는 위·아래 버튼이나 끌어놓기로 바꿉니다.
+          변경 내용은 <b>저장</b>을 눌러야 이 컴퓨터의 브라우저에 보관됩니다. (회신자료 내용은 저장하지 않습니다.)</p>
+        <div class="table-scroll" style="max-height:none"><table class="grid dept-table" id="dept-table"></table></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ================= 도움말 ================= -->
+  <div id="page-help" class="hidden">
+    <section class="step">
+      <h2>도움말</h2>
+      <div class="body">
+        <div class="help-h">사용 순서</div>
+        <ul class="help">
+          <li>단계 1 — 각 부서에서 받은 회신파일을 한 번에 올립니다.</li>
+          <li>단계 2 — 파일별로 자동 판별된 부서를 확인하고, 틀린 것만 직접 고릅니다.</li>
+          <li>단계 3 — 기준 서식과 다른 파일이 있으면 컬럼을 맞춰 준 뒤 <b>취합하기</b>를 누릅니다.</li>
+          <li>단계 4 — 취합 결과와 미회신 부서를 확인합니다.</li>
+          <li>단계 5 — 결과 엑셀을 내려받습니다.</li>
+        </ul>
+        <div class="help-h">부서를 찾는 순서</div>
+        <ul class="help">
+          <li>1) 파일명에서 부서명·별칭 찾기</li>
+          <li>2) 문서 안의 <code>부서명</code>, <code>담당부서</code> 같은 항목에서 찾기</li>
+          <li>3) 문서 위쪽에서 부서명 찾기 (이 경우 <b>확인 권장</b>으로 표시)</li>
+          <li>4) 그래도 찾지 못하면 사용자가 직접 선택</li>
+        </ul>
+        <p class="note">부서명이 두 개 이상 발견되면 임의로 정하지 않고 <b>선택 필요</b>로 남깁니다.
+          팀 이름만 있는 문서는 상위 부서를 추측하지 않습니다.</p>
+        <div class="help-h">지원하는 파일</div>
+        <ul class="help">
+          <li>엑셀 xlsx · xlsm · xls, CSV — 지원</li>
+          <li>한글 hwpx — 지원 (문단과 표를 읽습니다)</li>
+          <li>한글 hwp — 일부 지원 (문단과 표만 읽으며, 배포용·암호 설정 문서는 읽지 못합니다)</li>
+        </ul>
+        <div class="help-h">안내</div>
+        <ul class="help">
+          <li>올린 파일은 이 컴퓨터의 브라우저 안에서만 처리되며 어디에도 전송되지 않습니다.</li>
+          <li>원본 파일은 절대 수정하지 않습니다.</li>
+          <li>부서 설정만 이 브라우저에 저장되고, 회신자료 내용은 저장하지 않습니다.</li>
+          <li>인터넷 연결 없이 사용할 수 있습니다.</li>
+        </ul>
+        <div id="help-source" class="note"></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/jszip.min.js"></script>
+<script src="src/text-utils.js"></script>
+<script src="src/department-master.js"></script>
+<script src="src/department-store.js"></script>
+<script src="src/department-detector.js"></script>
+<script src="src/xml-lite.js"></script>
+<script src="src/excel-reader.js"></script>
+<script src="src/hwpx-reader.js"></script>
+<script src="src/hwp-reader.js"></script>
+<script src="src/table-detector.js"></script>
+<script src="src/schema-matcher.js"></script>
+<script src="src/analyzer.js"></script>
+<script src="src/aggregator.js"></script>
+<script src="src/excel-writer.js"></script>
+<script src="src/app.js"></script>
+</body>
+</html>
