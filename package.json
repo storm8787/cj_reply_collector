@@ -1,0 +1,19 @@
+{
+  "name": "cj-reply-collector",
+  "version": "1.0.0",
+  "private": true,
+  "description": "오프라인 부서 회신자료 자동취합기 (브라우저 단독 실행, 서버·외부 API 없음)",
+  "scripts": {
+    "vendor": "node build/vendor.js",
+    "departments": "node build/generate-department-master.js",
+    "build": "node build/build.js",
+    "test": "node tests/run.js",
+    "test:browser": "node tests/browser-test.js",
+    "verify": "npm run build && npm test && npm run test:browser"
+  },
+  "devDependencies": {
+    "jszip": "3.10.1",
+    "playwright": "^1.49.0",
+    "xlsx": "0.18.5"
+  }
+}
