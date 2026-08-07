@@ -74,7 +74,13 @@ async function hwpxFile(paragraphs, tables, opts) {
     '<?xml version="1.0" encoding="UTF-8"?><odf:manifest xmlns:odf="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0">' +
       '<odf:file-entry odf:full-path="/" odf:media-type="application/hwp+zip"/>' + encryption + '</odf:manifest>'
   );
-  zip.file('Contents/content.hpf', '<?xml version="1.0" encoding="UTF-8"?><opf:package xmlns:opf="http://www.idpf.org/2007/opf/"/>');
+  zip.file(
+    'Contents/content.hpf',
+    '<?xml version="1.0" encoding="UTF-8"?><opf:package xmlns:opf="http://www.idpf.org/2007/opf/">' +
+      '<opf:manifest><opf:item id="header" href="Contents/header.xml" media-type="application/xml"/>' +
+      '</opf:manifest></opf:package>'
+  );
+  zip.file('Contents/header.xml', styledHeaderXml());
   zip.file('Contents/section0.xml', hwpxSection(paragraphs, tables));
   const buf = await zip.generateAsync({ type: 'nodebuffer' });
   return new Uint8Array(buf);
@@ -164,6 +170,120 @@ function hwpFile(paragraphs, tables, opts) {
   return Uint8Array.from(out);
 }
 
+
+
+/*
+ * 서식이 들어있는 HWPX. 원본 서식이 취합본에 옮겨지는지 확인하는 데 쓴다.
+ * 실제 한/글이 저장하는 것과 같은 구조(header.xml 번호표 + 본문의 번호 참조)를 갖춘다.
+ */
+function styledHeaderXml() {
+  const langs = ['HANGUL', 'LATIN', 'HANJA', 'JAPANESE', 'OTHER', 'SYMBOL', 'USER'];
+  const fontface = (lang) =>
+    '<hh:fontface lang="' + lang + '" fontCnt="2">' +
+    '<hh:font id="0" face="바탕" type="TTF" isEmbedded="0"/>' +
+    '<hh:font id="1" face="맑은 고딕" type="TTF" isEmbedded="0"/>' +
+    '</hh:fontface>';
+  const fontRef = (n) =>
+    '<hh:fontRef ' + langs.map((l) => l.toLowerCase() + '="' + n + '"').join(' ') + '/>';
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<hh:head xmlns:hh="http://www.hancom.co.kr/hwpml/2011/head"' +
+    ' xmlns:hc="http://www.hancom.co.kr/hwpml/2011/core" version="1.4" secCnt="1">' +
+    '<hh:refList>' +
+    '<hh:fontfaces itemCnt="7">' + langs.map(fontface).join('') + '</hh:fontfaces>' +
+    '<hh:borderFills itemCnt="1"><hh:borderFill id="7" threeD="0" shadow="0"/></hh:borderFills>' +
+    '<hh:charProperties itemCnt="2">' +
+    '<hh:charPr id="8" height="1000" textColor="#000000" borderFillIDRef="7">' + fontRef(0) + '</hh:charPr>' +
+    '<hh:charPr id="9" height="1600" textColor="#FF0000" borderFillIDRef="7">' + fontRef(1) + '</hh:charPr>' +
+    '</hh:charProperties>' +
+    '<hh:tabProperties itemCnt="1"><hh:tabPr id="5" autoTabLeft="0"/></hh:tabProperties>' +
+    '<hh:numberings itemCnt="1"><hh:numbering id="4" start="0"/></hh:numberings>' +
+    '<hh:paraProperties itemCnt="1">' +
+    '<hh:paraPr id="6" tabPrIDRef="5" condense="0">' +
+    '<hh:align horizontal="CENTER" vertical="BASELINE"/>' +
+    '<hh:heading type="OUTLINE" idRef="4" level="0"/>' +
+    '<hh:border borderFillIDRef="7"/>' +
+    '</hh:paraPr></hh:paraProperties>' +
+    '<hh:styles itemCnt="1">' +
+    '<hh:style id="3" type="PARA" name="본문" engName="Body" paraPrIDRef="6" charPrIDRef="9" nextStyleIDRef="3"/>' +
+    '</hh:styles>' +
+    '</hh:refList></hh:head>'
+  );
+}
+
+function styledSectionXml(extraRun) {
+  return (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<hs:sec xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section"' +
+    ' xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph"' +
+    ' xmlns:hc="http://www.hancom.co.kr/hwpml/2011/core">' +
+    '<hp:p id="1" paraPrIDRef="6" styleIDRef="3">' +
+    '<hp:run charPrIDRef="9">' +
+    '<hp:secPr id="" textDirection="HORIZONTAL" outlineShapeIDRef="4" memoShapeIDRef="0">' +
+    '<hp:pagePr landscape="WIDELY" width="59528" height="84188"/>' +
+    '</hp:secPr>' +
+    '<hp:t>붉은 굵은 제목</hp:t>' +
+    '</hp:run></hp:p>' +
+    '<hp:p id="2" paraPrIDRef="6" styleIDRef="3">' +
+    '<hp:run charPrIDRef="8"><hp:t>담당부서 : 도로과</hp:t></hp:run>' +
+    '</hp:p>' +
+    (extraRun || '') +
+    '</hs:sec>'
+  );
+}
+
+async function hwpxPackage(headerXml, sectionXml, extraFiles) {
+  const zip = new JSZip();
+  zip.file('mimetype', 'application/hwp+zip');
+  zip.file('version.xml', '<?xml version="1.0" encoding="UTF-8"?><hv:HCFVersion xmlns:hv="http://www.hancom.co.kr/hwpml/2011/version" major="5" minor="1"/>');
+  zip.file(
+    'META-INF/manifest.xml',
+    '<?xml version="1.0" encoding="UTF-8"?><odf:manifest xmlns:odf="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0">' +
+      '<odf:file-entry odf:full-path="/" odf:media-type="application/hwp+zip"/></odf:manifest>'
+  );
+  zip.file(
+    'Contents/content.hpf',
+    '<?xml version="1.0" encoding="UTF-8"?><opf:package xmlns:opf="http://www.idpf.org/2007/opf/">' +
+      '<opf:manifest>' +
+      '<opf:item id="header" href="Contents/header.xml" media-type="application/xml"/>' +
+      '<opf:item id="section0" href="Contents/section0.xml" media-type="application/xml"/>' +
+      Object.keys(extraFiles || {})
+        .filter((n) => /^BinData\//.test(n))
+        .map((n) => '<opf:item id="' + n.split('/').pop().replace(/\.[^.]+$/, '') + '" href="' + n + '" media-type="image/png"/>')
+        .join('') +
+      '</opf:manifest><opf:spine><opf:itemref idref="section0" linear="yes"/></opf:spine></opf:package>'
+  );
+  zip.file('Contents/header.xml', headerXml);
+  zip.file('Contents/section0.xml', sectionXml);
+  Object.keys(extraFiles || {}).forEach((n) => zip.file(n, extraFiles[n]));
+  return new Uint8Array(await zip.generateAsync({ type: 'nodebuffer' }));
+}
+
+function hwpxStyledFile(extra) {
+  return hwpxPackage(styledHeaderXml(), styledSectionXml(), extra);
+}
+
+/* 실제 한/글 문서처럼 부가 설정 파일이 붙어 있는 HWPX */
+function hwpxRichFile() {
+  return hwpxPackage(styledHeaderXml(), styledSectionXml(), {
+    'settings.xml': '<?xml version="1.0" encoding="UTF-8"?><ha:HWPApplicationSetting xmlns:ha="http://www.hancom.co.kr/hwpml/2011/app"><ha:CaretPosition listIDRef="0" paraIDRef="0" pos="0"/></ha:HWPApplicationSetting>',
+    'Preview/PrvText.txt': '미리보기 텍스트',
+    'DocOptions/DrmLicense.xml': '<?xml version="1.0" encoding="UTF-8"?><license/>',
+  });
+}
+
+function hwpxImageFile() {
+  // 1x1 PNG
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64'
+  );
+  const run =
+    '<hp:p id="3" paraPrIDRef="6" styleIDRef="3"><hp:run charPrIDRef="8">' +
+    '<hp:pic><hc:img binaryItemIDRef="image1"/></hp:pic>' +
+    '</hp:run></hp:p>';
+  return hwpxPackage(styledHeaderXml(), styledSectionXml(run), { 'BinData/image1.png': png });
+}
 
 /* -------------------------------- PDF -------------------------------- */
 /*
@@ -418,6 +538,12 @@ async function buildSamples() {
 }
 
 module.exports = {
+  hwpxStyledFile,
+  hwpxRichFile,
+  hwpxImageFile,
+  hwpxPackage,
+  styledHeaderXml,
+  styledSectionXml,
   pdfFile,
   BASE_HEADER,
   dataRows,

@@ -1,10 +1,11 @@
 /*
- * HWPX(한글 문서) 취합본 생성.
- * 각 부서 한글 회신파일에서 읽은 문단과 표를 부서순서대로 이어붙여
- * HWPX(ZIP + XML) 파일 하나를 새로 만든다.
+ * HWPX(한글 문서) 취합본의 뼈대 만들기.
+ * 취합본에 공통으로 들어가는 기본 번호표(글꼴·글자모양·문단모양·테두리)와
+ * 포장 파일(version.xml, container.xml, content.hpf, manifest.xml)을 만든다.
  *
- * 주의: 글꼴·색상·테두리 같은 원본 서식은 복원하지 않고 내용(문단·표)만 옮긴다.
- *       원본을 그대로 보존해야 할 때는 함께 제공하는 원본 ZIP 을 사용한다.
+ * 실제 문서 합치기는 hwpx-merger.js 가 담당하며, 원본의 번호표를 여기에 덧붙여
+ * 원본 서식을 살린다. 서식 정보를 가져올 수 없는 원본(hwp 바이너리)만
+ * plainBody() 로 내용을 다시 그린다.
  */
 (function (global) {
   'use strict';
@@ -59,18 +60,36 @@
     );
   }
 
-  function manifestXml() {
+  function manifestXml(sectionCount, binItems) {
+    var count = sectionCount || 1;
+    var entries = '';
+    for (var i = 0; i < count; i++) {
+      entries += '<odf:file-entry odf:full-path="Contents/section' + i + '.xml" odf:media-type="application/xml"/>';
+    }
+    (binItems || []).forEach(function (b) {
+      entries += '<odf:file-entry odf:full-path="' + esc(b.href) + '" odf:media-type="' + esc(b.media) + '"/>';
+    });
     return (
       xmlHead() +
       '<odf:manifest xmlns:odf="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" version="1.2">' +
       '<odf:file-entry odf:full-path="/" odf:media-type="application/hwp+zip"/>' +
       '<odf:file-entry odf:full-path="Contents/header.xml" odf:media-type="application/xml"/>' +
-      '<odf:file-entry odf:full-path="Contents/section0.xml" odf:media-type="application/xml"/>' +
+      entries +
       '</odf:manifest>'
     );
   }
 
-  function contentHpf(title) {
+  function contentHpf(title, sectionCount, binItems) {
+    var count = sectionCount || 1;
+    var items = '';
+    var spine = '';
+    for (var i = 0; i < count; i++) {
+      items += '<opf:item id="section' + i + '" href="Contents/section' + i + '.xml" media-type="application/xml"/>';
+      spine += '<opf:itemref idref="section' + i + '" linear="yes"/>';
+    }
+    (binItems || []).forEach(function (b) {
+      items += '<opf:item id="' + esc(b.id) + '" href="' + esc(b.href) + '" media-type="' + esc(b.media) + '"/>';
+    });
     return (
       xmlHead() +
       '<opf:package xmlns:opf="http://www.idpf.org/2007/opf/"' +
@@ -83,27 +102,30 @@
       '</opf:metadata>' +
       '<opf:manifest>' +
       '<opf:item id="header" href="Contents/header.xml" media-type="application/xml"/>' +
-      '<opf:item id="section0" href="Contents/section0.xml" media-type="application/xml"/>' +
+      items +
       '</opf:manifest>' +
       '<opf:spine>' +
       '<opf:itemref idref="header" linear="yes"/>' +
-      '<opf:itemref idref="section0" linear="yes"/>' +
+      spine +
       '</opf:spine>' +
       '</opf:package>'
     );
   }
 
-  function fontface(lang) {
+  function fontEntry(id) {
     return (
-      '<hh:fontface lang="' + lang + '" fontCnt="1">' +
-      '<hh:font id="0" face="함초롬바탕" type="TTF" isEmbedded="0">' +
+      '<hh:font id="' + id + '" face="함초롬바탕" type="TTF" isEmbedded="0">' +
       '<hh:typeInfo familyType="FCAT_UNKNOWN" weight="0" proportion="0" contrast="0"' +
       ' strokeVariation="0" armStyle="0" letterform="0" midline="0" xHeight="0"/>' +
-      '</hh:font></hh:fontface>'
+      '</hh:font>'
     );
   }
 
-  function borderFill(id, solid) {
+  function fontface(lang) {
+    return '<hh:fontface lang="' + lang + '" fontCnt="1">' + fontEntry(0) + '</hh:fontface>';
+  }
+
+  function borderFillEntry(id, solid) {
     var type = solid ? 'SOLID' : 'NONE';
     var side = function (name) {
       return '<hh:' + name + ' type="' + type + '" width="0.12 mm" color="#000000"/>';
@@ -165,6 +187,39 @@
     );
   }
 
+  /** 취합본의 기본 번호표. merger 가 여기에 원본 문서의 항목을 덧붙인다. */
+  function baseRefList() {
+    var fonts = {};
+    LANGS.forEach(function (lang) {
+      fonts[lang] = [{ id: 0, xml: fontEntry(0) }];
+    });
+    return {
+      fonts: fonts,
+      borderFills: [
+        { id: 0, xml: borderFillEntry(0, false) },
+        { id: 1, xml: borderFillEntry(1, false) },
+        { id: 2, xml: borderFillEntry(2, true) },
+      ],
+      charPrs: [
+        { id: 0, xml: charPr(0, 1000, false) },
+        { id: 1, xml: charPr(1, 1100, true) },
+      ],
+      tabPrs: [{ id: 0, xml: '<hh:tabPr id="0" autoTabLeft="0" autoTabRight="0"/>' }],
+      paraPrs: [
+        { id: 0, xml: paraPr(0, 'JUSTIFY') },
+        { id: 1, xml: paraPr(1, 'LEFT') },
+      ],
+      styles: [
+        {
+          id: 0,
+          xml:
+            '<hh:style id="0" type="PARA" name="바탕글" engName="Normal" paraPrIDRef="0" charPrIDRef="0"' +
+            ' nextStyleIDRef="0" langID="1042" lockForm="0"/>',
+        },
+      ],
+    };
+  }
+
   function headerXml() {
     return (
       xmlHead() +
@@ -175,7 +230,8 @@
       '<hh:fontfaces itemCnt="' + LANGS.length + '">' +
       LANGS.map(fontface).join('') +
       '</hh:fontfaces>' +
-      '<hh:borderFills itemCnt="2">' + borderFill(1, false) + borderFill(2, true) + '</hh:borderFills>' +
+      '<hh:borderFills itemCnt="3">' + borderFillEntry(0, false) + borderFillEntry(1, false) +
+      borderFillEntry(2, true) + '</hh:borderFills>' +
       '<hh:charProperties itemCnt="2">' + charPr(0, 1000, false) + charPr(1, 1100, true) + '</hh:charProperties>' +
       '<hh:tabProperties itemCnt="1"><hh:tabPr id="0" autoTabLeft="0" autoTabRight="0"/></hh:tabProperties>' +
       '<hh:numberings itemCnt="0"/>' +
@@ -303,81 +359,87 @@
   var MAX_PARAGRAPHS_PER_FILE = 500;
 
   /**
-   * @param blocks [{department, fileName, paragraphs:[], tables:[grid]}] - 이미 부서순서로 정렬된 목록
+   * 서식 정보를 가져올 수 없는 원본(hwp 바이너리 등)의 내용을 문단·표로 다시 만든다.
+   * 취합본의 기본 번호표(reg)에 있는 글자모양·문단모양을 쓴다.
    */
-  function buildSectionXml(blocks, title) {
-    paraId = 0;
-    var body = para(title, { first: true, bold: true });
-    body += para('');
-    (blocks || []).forEach(function (b, i) {
-      body += para('■ ' + b.department + ' — ' + b.fileName, { bold: true, pageBreak: i > 0 });
-      (b.paragraphs || []).slice(0, MAX_PARAGRAPHS_PER_FILE).forEach(function (p) {
-        var line = T.collapseSpace(p);
-        if (line) body += para(line);
-      });
-      (b.tables || []).forEach(function (grid) {
-        var trimmed = grid.slice(0, MAX_TABLE_ROWS).map(function (row) {
-          return row.slice(0, MAX_TABLE_COLS);
-        });
-        body += para('');
-        body += table(trimmed);
+  function plainBody(reg, paragraphs, tables, headingText, pageBreak) {
+    var body = '';
+    if (headingText) body += para(headingText, { bold: true, pageBreak: !!pageBreak });
+    (paragraphs || []).slice(0, MAX_PARAGRAPHS_PER_FILE).forEach(function (p) {
+      var line = T.collapseSpace(p);
+      if (line) body += para(line);
+    });
+    (tables || []).forEach(function (grid) {
+      if (!grid || !grid.length) return;
+      var trimmed = grid.slice(0, MAX_TABLE_ROWS).map(function (row) {
+        return row.slice(0, MAX_TABLE_COLS);
       });
       body += para('');
+      body += table(trimmed);
     });
-    return (
+    body += para('');
+    return body;
+  }
+
+
+  /**
+   * 한글(hwpx) 원본이 하나도 없을 때만 쓰는 대비 경로.
+   * 서식 정보를 가져올 수 없는 hwp 원본들의 내용만 담아 HWPX 를 새로 만든다.
+   * hwpx 원본이 하나라도 있으면 hwpx-merger 가 원본 서식을 살려 합친다.
+   */
+  function buildPlainDocument(blocks, options) {
+    var opts = options || {};
+    var JSZipRef = global.JSZip || (typeof JSZip !== 'undefined' ? JSZip : null);
+    if (!JSZipRef) return Promise.reject(new Error('한글 취합본을 만드는 기능을 사용할 수 없습니다.'));
+    var reg = { ownCharPr: 0, ownCharPrBold: 1, ownParaPr: 0, ownStyle: 0 };
+    var body = '';
+    (blocks || []).forEach(function (b, i) {
+      body += plainBody(reg, b.paragraphs, b.tables, '■ ' + b.department, i > 0);
+    });
+    var sectionXml =
       xmlHead() +
       '<hs:sec xmlns:hs="' + NS_SEC + '" xmlns:hp="' + NS_PARA + '" xmlns:hc="' + NS_CORE +
       '" xmlns:hh="' + NS_HEAD + '">' +
+      firstParagraphWithSecPr() +
       body +
-      '</hs:sec>'
-    );
-  }
-
-  function previewText(blocks, title) {
-    var lines = [title, ''];
-    (blocks || []).forEach(function (b) {
-      lines.push('■ ' + b.department + ' — ' + b.fileName);
-      (b.paragraphs || []).slice(0, 20).forEach(function (p) {
-        lines.push(p);
-      });
-      lines.push('');
-    });
-    return lines.join('\r\n');
-  }
-
-  /**
-   * HWPX 파일(Blob) 생성.
-   * @returns Promise<Blob>
-   */
-  function build(blocks, options) {
-    var opts = options || {};
-    var title = opts.title || '부서 회신자료 통합본';
-    var JSZipRef = global.JSZip || (typeof JSZip !== 'undefined' ? JSZip : null);
-    if (!JSZipRef) return Promise.reject(new Error('한글 취합본을 만드는 기능을 사용할 수 없습니다.'));
+      '</hs:sec>';
 
     var zip = new JSZipRef();
-    // mimetype 은 압축하지 않고 가장 먼저 넣는다
     zip.file('mimetype', 'application/hwp+zip', { compression: 'STORE' });
     zip.file('version.xml', versionXml());
     zip.file('META-INF/container.xml', containerXml());
-    zip.file('META-INF/manifest.xml', manifestXml());
-    zip.file('Contents/content.hpf', contentHpf(title));
+    zip.file('META-INF/manifest.xml', manifestXml(1, []));
+    zip.file('Contents/content.hpf', contentHpf(opts.title || '부서 회신자료 통합본', 1, []));
     zip.file('Contents/header.xml', headerXml());
-    zip.file('Contents/section0.xml', buildSectionXml(blocks, title));
-    zip.file('Preview/PrvText.txt', previewText(blocks, title));
-    return zip.generateAsync({
-      type: 'blob',
-      mimeType: 'application/hwp+zip',
-      compression: 'DEFLATE',
-      compressionOptions: { level: 6 },
-    });
+    zip.file('Contents/section0.xml', sectionXml);
+    return zip
+      .generateAsync({
+        type: opts.zipType || 'blob',
+        mimeType: 'application/hwp+zip',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 6 },
+      })
+      .then(function (blob) {
+        return { blob: blob, warnings: [], documentCount: (blocks || []).length };
+      });
+  }
+
+  function firstParagraphWithSecPr() {
+    return (
+      '<hp:p paraPrIDRef="0" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0">' +
+      '<hp:run charPrIDRef="0">' + secPr() + '<hp:t/></hp:run></hp:p>'
+    );
   }
 
   CJ.hwpxWriter = {
-    build: build,
-    buildSectionXml: buildSectionXml,
-    headerXml: headerXml,
+    plainBody: plainBody,
+    buildPlainDocument: buildPlainDocument,
+    baseRefList: baseRefList,
+    escapeXml: esc,
+    versionXml: versionXml,
+    containerXml: containerXml,
     contentHpf: contentHpf,
     manifestXml: manifestXml,
+    headerXml: headerXml,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

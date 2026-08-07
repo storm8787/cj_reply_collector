@@ -12,6 +12,7 @@
     "verify": "npm run build && npm test && npm run test:browser"
   },
   "devDependencies": {
+    "@xmldom/xmldom": "^0.8.10",
     "jszip": "3.10.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^3.11.174",
